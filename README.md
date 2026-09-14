@@ -20,6 +20,15 @@ Requires macOS 26+.
 - First launch installs the bundled HAL driver (administrator password)
 - Source list persists; a source becomes Active again when that app is running
 
+## Install
+
+```bash
+brew tap alexiscreuzot/echo https://github.com/alexiscreuzot/echo
+brew install --cask echo
+```
+
+First launch asks for an administrator password to install the Echo audio device.
+
 ## Architecture
 
 - **Echo.driver** — Core Audio HAL plugin. Virtual 2-channel 48 kHz device. Audio written to its output is readable on its input.
