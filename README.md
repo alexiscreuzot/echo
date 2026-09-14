@@ -23,7 +23,8 @@ Requires macOS 26+.
 ## Install
 
 ```bash
-brew tap alexiscreuzot/echo https://github.com/alexiscreuzot/echo
+brew tap alexiscreuzot/echo
+brew trust alexiscreuzot/echo
 brew install --cask echo
 ```
 
