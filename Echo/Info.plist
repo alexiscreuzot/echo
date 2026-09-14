@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Echo</string>
+	<key>CFBundleName</key>
+	<string>Echo</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Echo captures audio from the apps you add as sources and routes it into the Echo virtual device for Simulator testing.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Echo needs audio access to tap the apps you select and route their output into the Echo device.</string>
+	<key>NSSystemAudioRecordingUsageDescription</key>
+	<string>Echo records system audio from the apps you add as sources so it can be sent to the iOS Simulator.</string>
+</dict>
+</plist>
