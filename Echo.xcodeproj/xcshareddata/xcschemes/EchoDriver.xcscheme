@@ -17,6 +17,7 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "8A1E00000000000000000020"
                BuildableName = "Echo.driver"
+               BlueprintName = "EchoDriver"
                ReferencedContainer = "container:Echo.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -52,6 +53,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "8A1E00000000000000000020"
             BuildableName = "Echo.driver"
+            BlueprintName = "EchoDriver"
             ReferencedContainer = "container:Echo.xcodeproj">
          </BuildableReference>
       </MacroExpansion>

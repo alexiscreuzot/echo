@@ -7,12 +7,12 @@ struct SourceListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             sourceList
                 .frame(maxHeight: .infinity)
-            footer
+            actionBar
         }
-        .frame(minWidth: 300, minHeight: 200)
+        .padding(.top, 36)
+        .frame(minWidth: 300, minHeight: EchoWindowLayout.minHeight)
         .onAppear {
             store.refreshProcessObjects()
         }
@@ -27,83 +27,28 @@ struct SourceListView: View {
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Echo")
-                    .font(.title2.weight(.semibold))
-                Text("App audio → Simulator")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .shadow(color: .black.opacity(0.28), radius: 8, y: 1)
-            Spacer()
-            GlassEffectContainer(spacing: 8) {
-                HStack(spacing: 8) {
-                    Button {
-                        showingPicker = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .buttonStyle(.glass)
-                    .help("Add an app")
-
-                    Button {
-                        if router.isRunning {
-                            router.stop()
-                        } else {
-                            store.refreshProcessObjects()
-                            router.start(sources: store.sources)
-                        }
-                    } label: {
-                        Label(
-                            router.isRunning ? "Stop" : "Start",
-                            systemImage: router.isRunning ? "stop.fill" : "play.fill"
-                        )
-                        .contentTransition(.symbolEffect(.replace))
-                    }
-                    .buttonStyle(.glassProminent)
-                    .keyboardShortcut(.space, modifiers: [])
-                    .disabled(!router.isRunning && !store.sources.contains(where: { $0.enabled }))
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 36)
-        .padding(.bottom, 10)
-    }
-
     private var sourceList: some View {
         Group {
             if store.sources.isEmpty {
-                ContentUnavailableView {
-                    Label("No sources", systemImage: "waveform")
-                } description: {
-                    Text("Add the apps whose audio you want to send to the Simulator.")
-                } actions: {
-                    Button("Add Source") {
-                        showingPicker = true
-                    }
-                    .buttonStyle(.glassProminent)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .shadow(color: .black.opacity(0.28), radius: 8, y: 1)
+                emptyHero
             } else {
                 ScrollView {
-                    GlassEffectContainer(spacing: 8) {
-                        LazyVStack(spacing: 8) {
-                            ForEach(store.sources) { source in
-                                SourceRow(
-                                    source: source,
-                                    level: router.levels[source.bundleID] ?? 0,
-                                    isMetering: router.isRunning && source.enabled
-                                ) {
-                                    store.toggle(source)
-                                } onMute: {
-                                    store.toggleMute(source)
-                                } onRemove: {
-                                    store.remove(id: source.bundleID)
+                    VStack(spacing: 12) {
+                        howItWorks
+                        GlassEffectContainer(spacing: 8) {
+                            LazyVStack(spacing: 8) {
+                                ForEach(store.sources) { source in
+                                    SourceRow(
+                                        source: source,
+                                        level: router.levels[source.bundleID] ?? 0,
+                                        isMetering: router.isRunning && source.enabled
+                                    ) {
+                                        store.toggle(source)
+                                    } onMute: {
+                                        store.toggleMute(source)
+                                    } onRemove: {
+                                        store.remove(id: source.bundleID)
+                                    }
                                 }
                             }
                         }
@@ -115,22 +60,81 @@ struct SourceListView: View {
         }
     }
 
-    private var footer: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 8))
-                .foregroundStyle(router.isRunning ? .green : .secondary.opacity(0.45))
-                .symbolEffect(.pulse, options: .repeating, isActive: router.isRunning)
-            Text(router.status)
-                .font(.caption)
+    private var emptyHero: some View {
+        howItWorks
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 16)
+    }
+
+    private var howItWorks: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                flowNode("App audio", systemImage: "speaker.wave.2.fill")
+                Image(systemName: "arrow.right")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                flowNode("Virtual device", systemImage: "waveform")
+            }
+
+            Text("Echo appears as a microphone you can select.")
+                .font(.callout)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
-            Spacer(minLength: 0)
+                .multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .glassEffect(.regular, in: .capsule)
-        .padding(.horizontal, 12)
+        .shadow(color: .black.opacity(0.28), radius: 8, y: 1)
+    }
+
+    private func flowNode(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.callout.weight(.medium))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .glassEffect(.regular, in: .rect(cornerRadius: 12, style: .continuous))
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 7))
+                    .foregroundStyle(router.isRunning ? .green : .secondary.opacity(0.45))
+                    .symbolEffect(.pulse, options: .repeating, isActive: router.isRunning)
+                Text(router.status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .help(router.status)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                showingPicker = true
+            } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.glass)
+            .help("Add an app")
+
+            Button {
+                if router.isRunning {
+                    router.stop()
+                } else {
+                    store.refreshProcessObjects()
+                    router.start(sources: store.sources)
+                }
+            } label: {
+                Label(
+                    router.isRunning ? "Stop" : "Start",
+                    systemImage: router.isRunning ? "stop.fill" : "play.fill"
+                )
+                .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.glassProminent)
+            .keyboardShortcut(.space, modifiers: [])
+            .disabled(!router.isRunning && !store.sources.contains(where: { $0.enabled }))
+        }
+        .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 12)
     }

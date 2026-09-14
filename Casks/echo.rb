@@ -1,6 +1,6 @@
 cask "echo" do
-  version "1.0.0"
-  sha256 "d0ee2c4ce600bb93464a72dbb0827e0c0c30150b8c8a59c002185d86e97004a0"
+  version "1.1.0"
+  sha256 "c8408a5dff50af075332e57a8e8cb1ed66a406cc08d39e54794a89ca8173d93b"
 
   url "https://github.com/alexiscreuzot/echo/releases/download/v#{version}/Echo.zip"
   name "Echo"
