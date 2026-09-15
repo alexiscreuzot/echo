@@ -14,6 +14,7 @@ struct SourceListView: View {
             sourceList
                 .frame(maxHeight: .infinity)
             actionBar
+            OutputMeter(level: outputLevel)
         }
         .padding(.top, 36)
         .frame(minWidth: 300, minHeight: EchoWindowLayout.minHeight)
@@ -29,6 +30,11 @@ struct SourceListView: View {
         .onChange(of: filePlayer.fileName) { _, _ in
             router.refreshFileStatus()
         }
+        .onChange(of: filePlayer.loadError) { _, error in
+            if let error {
+                router.report(error)
+            }
+        }
         .sheet(isPresented: $showingPicker) {
             AppPickerView(store: store)
         }
@@ -41,9 +47,7 @@ struct SourceListView: View {
             let accessed = url.startAccessingSecurityScopedResource()
             defer { if accessed { url.stopAccessingSecurityScopedResource() } }
             filePlayer.load(url: url)
-            if let error = filePlayer.loadError {
-                router.report(error)
-            } else if router.isRunning {
+            if router.isRunning {
                 filePlayer.play()
             }
         }
@@ -55,6 +59,11 @@ struct SourceListView: View {
 
     private var canStart: Bool {
         store.sources.contains(where: \.enabled) || filePlayer.fileName != nil
+    }
+
+    private var outputLevel: Float {
+        guard router.isRunning else { return 0 }
+        return router.levels.values.max() ?? 0
     }
 
     private var sourceList: some View {
@@ -79,11 +88,7 @@ struct SourceListView: View {
                                     }
                                 }
                                 ForEach(store.sources) { source in
-                                    SourceRow(
-                                        source: source,
-                                        level: router.levels[source.bundleID] ?? 0,
-                                        isMetering: router.isRunning && source.enabled
-                                    ) {
+                                    SourceRow(source: source) {
                                         store.toggle(source)
                                     } onMute: {
                                         store.toggleMute(source)
@@ -205,7 +210,7 @@ struct SourceListView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
-        .padding(.bottom, 12)
+        .padding(.bottom, 10)
     }
 }
 
@@ -275,18 +280,24 @@ private struct PlayerCard: View {
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .frame(minWidth: 32, alignment: .leading)
-                    SeekBar(progress: displayedProgress) { value, editing in
-                        if editing && !isScrubbing {
-                            isScrubbing = true
-                            player.beginScrub()
-                        }
-                        scrubProgress = value
-                        player.seek(to: value)
-                        if !editing {
-                            isScrubbing = false
-                            player.endScrub()
-                            if isRunning {
-                                player.play()
+                    if player.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(maxWidth: .infinity, minHeight: 16)
+                    } else {
+                        SeekBar(progress: displayedProgress) { value, editing in
+                            if editing && !isScrubbing {
+                                isScrubbing = true
+                                player.beginScrub()
+                            }
+                            scrubProgress = value
+                            player.seek(to: value)
+                            if !editing {
+                                isScrubbing = false
+                                player.endScrub()
+                                if isRunning {
+                                    player.play()
+                                }
                             }
                         }
                     }
@@ -422,8 +433,6 @@ final class SeekBarNSView: NSView {
 
 private struct SourceRow: View {
     let source: AudioSource
-    let level: Float
-    let isMetering: Bool
     let onToggle: () -> Void
     let onMute: () -> Void
     let onRemove: () -> Void
@@ -456,18 +465,15 @@ private struct SourceRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 .shadow(color: .black.opacity(0.22), radius: 4, y: 1)
 
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 6) {
-                    Text(source.displayName)
-                        .font(.body.weight(.semibold))
-                        .lineLimit(1)
-                    if !source.isActive {
-                        Text("Offline")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
+            HStack(spacing: 6) {
+                Text(source.displayName)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                if !source.isActive {
+                    Text("Offline")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                LevelMeter(level: isMetering ? level : 0)
             }
 
             Spacer(minLength: 6)
@@ -505,21 +511,20 @@ private struct SourceRow: View {
     }
 }
 
-private struct LevelMeter: View {
+private struct OutputMeter: View {
     let level: Float
 
     var body: some View {
-        Capsule()
-            .fill(Color.secondary.opacity(0.15))
-            .frame(height: 4)
-            .overlay(alignment: .leading) {
-                GeometryReader { geometry in
-                    Capsule()
-                        .fill(meterGradient)
-                        .frame(width: max(0, geometry.size.width * CGFloat(clampedLevel)))
-                }
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Color.secondary.opacity(0.12)
+                Rectangle()
+                    .fill(meterGradient)
+                    .frame(width: max(0, geometry.size.width * CGFloat(clampedLevel)))
             }
-            .clipShape(Capsule())
+        }
+        .frame(height: 3)
+        .accessibilityLabel("Output level")
     }
 
     private var clampedLevel: Float {

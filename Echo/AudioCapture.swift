@@ -4,13 +4,18 @@ import Foundation
 final class AudioCapture {
 
     private var aggregateID: AudioObjectID = 0
+    private var ioDeviceID: AudioObjectID = 0
+    private var usesEchoDirect = false
     private var mutedTapID: AudioObjectID = 0
     private var unmutedTapID: AudioObjectID = 0
     private var ioProcID: AudioDeviceIOProcID?
     private let meter = MeterState()
+    private let fileMeter = MeterState()
     private var bundleIDs: [String] = []
     private var filePlayer: FilePlayer?
     private var onLevels: (([String: Float]) -> Void)?
+    private var fileScratch: UnsafeMutablePointer<Float>?
+    private let fileScratchFrameCapacity = 8192
 
     deinit {
         stop()
@@ -35,18 +40,32 @@ final class AudioCapture {
         self.filePlayer = filePlayer
         self.onLevels = onLevels
         meter.reset()
+        fileMeter.reset()
 
-        try createTapAggregate(mutedProcessIDs: muted, unmutedProcessIDs: unmuted)
-        try activate(aggregateID)
+        let hasTaps = !muted.isEmpty || !unmuted.isEmpty
+        if hasTaps {
+            try createTapAggregate(mutedProcessIDs: muted, unmutedProcessIDs: unmuted)
+            try activate(aggregateID)
+            ioDeviceID = aggregateID
+            usesEchoDirect = false
+        } else {
+            guard let echoID = EchoDevice.objectID() else { throw EchoError.deviceMissing }
+            ioDeviceID = echoID
+            usesEchoDirect = true
+            try activate(echoID)
+        }
+        allocateScratch()
         try startIO()
     }
 
     func stop() {
-        if let ioProcID, aggregateID != 0 {
-            AudioDeviceStop(aggregateID, ioProcID)
-            AudioDeviceDestroyIOProcID(aggregateID, ioProcID)
+        if let ioProcID, ioDeviceID != 0 {
+            AudioDeviceStop(ioDeviceID, ioProcID)
+            AudioDeviceDestroyIOProcID(ioDeviceID, ioProcID)
         }
         ioProcID = nil
+        ioDeviceID = 0
+        usesEchoDirect = false
 
         if aggregateID != 0 {
             AudioHardwareDestroyAggregateDevice(aggregateID)
@@ -60,10 +79,12 @@ final class AudioCapture {
             AudioHardwareDestroyProcessTap(unmutedTapID)
             unmutedTapID = 0
         }
+        deallocateScratch()
         bundleIDs = []
         filePlayer = nil
         onLevels = nil
         meter.reset()
+        fileMeter.reset()
     }
 
     private func createTapAggregate(mutedProcessIDs: [AudioObjectID], unmutedProcessIDs: [AudioObjectID]) throws {
@@ -158,22 +179,22 @@ final class AudioCapture {
 
     private func startIO() throws {
         var newProcID: AudioDeviceIOProcID?
-        var status = AudioDeviceCreateIOProcIDWithBlock(&newProcID, aggregateID, nil) { [weak self] _, inputData, _, outputData, _ in
+        var status = AudioDeviceCreateIOProcIDWithBlock(&newProcID, ioDeviceID, nil) { [weak self] _, inputData, _, outputData, _ in
             self?.handleIO(input: inputData, output: outputData)
         }
         if status != noErr || newProcID == nil {
             Thread.sleep(forTimeInterval: 0.05)
-            try activate(aggregateID)
-            status = AudioDeviceCreateIOProcIDWithBlock(&newProcID, aggregateID, nil) { [weak self] _, inputData, _, outputData, _ in
+            try activate(ioDeviceID)
+            status = AudioDeviceCreateIOProcIDWithBlock(&newProcID, ioDeviceID, nil) { [weak self] _, inputData, _, outputData, _ in
                 self?.handleIO(input: inputData, output: outputData)
             }
         }
         guard status == noErr, let newProcID else {
             throw EchoError.engineStartFailed("Could not start the Echo audio path (\(status)).")
         }
-        let startStatus = AudioDeviceStart(aggregateID, newProcID)
+        let startStatus = AudioDeviceStart(ioDeviceID, newProcID)
         guard startStatus == noErr else {
-            AudioDeviceDestroyIOProcID(aggregateID, newProcID)
+            AudioDeviceDestroyIOProcID(ioDeviceID, newProcID)
             throw EchoError.engineStartFailed("Could not start the Echo audio path (\(startStatus)).")
         }
         ioProcID = newProcID
@@ -184,21 +205,38 @@ final class AudioCapture {
         output outputData: UnsafeMutablePointer<AudioBufferList>
     ) {
         let tapPeak: Float
-        if Self.hasTapInput(inputData) {
+        if usesEchoDirect {
+            // Echo’s input is the loopback of this output — never feed it back.
+            Self.zeroOutput(outputData)
+            tapPeak = 0
+        } else if Self.hasTapInput(inputData) {
             tapPeak = Self.relayTap(from: inputData, to: outputData)
         } else {
             Self.zeroOutput(outputData)
             tapPeak = 0
         }
-        let filePeak = filePlayer?.render(into: outputData) ?? 0
-        let peak = max(tapPeak, filePeak)
-        guard let value = meter.publish(peak: peak) else { return }
+
+        var filePeak: Float = 0
+        if let filePlayer, let scratch = fileScratch {
+            let frames = min(Self.frameCount(of: outputData), fileScratchFrameCapacity)
+            if frames > 0 {
+                memset(scratch, 0, frames * 2 * MemoryLayout<Float>.stride)
+                filePeak = filePlayer.render(into: scratch, frameCount: frames)
+                Self.mixFile(scratch: scratch, frames: frames, into: outputData)
+            }
+        }
+
+        let mixValue = meter.publish(peak: max(tapPeak, filePeak))
+        let fileValue = fileMeter.publish(peak: filePeak)
+        guard mixValue != nil || fileValue != nil else { return }
         let ids = bundleIDs
+        let mixLevel = mixValue ?? meter.lastValue
+        let fileLevel = fileValue ?? fileMeter.lastValue
         let callback = onLevels
         DispatchQueue.main.async { [weak self] in
             guard self != nil else { return }
-            var entries = ids.map { ($0, value) }
-            entries.append((FilePlayer.levelKey, value))
+            var entries = ids.map { ($0, mixLevel) }
+            entries.append((FilePlayer.levelKey, fileLevel))
             callback?(Dictionary(uniqueKeysWithValues: entries))
         }
     }
@@ -215,6 +253,13 @@ final class AudioCapture {
                 memset(dst, 0, Int(buffer.mDataByteSize))
             }
         }
+    }
+
+    private static func frameCount(of outputData: UnsafeMutablePointer<AudioBufferList>) -> Int {
+        let output = UnsafeMutableAudioBufferListPointer(outputData)
+        guard let first = output.first, first.mData != nil else { return 0 }
+        let channels = max(1, Int(first.mNumberChannels == 0 ? 2 : first.mNumberChannels))
+        return Int(first.mDataByteSize) / (MemoryLayout<Float>.stride * channels)
     }
 
     private func activate(_ deviceID: AudioObjectID) throws {
@@ -302,17 +347,69 @@ final class AudioCapture {
         }
         return min(peak, 1)
     }
+
+    private static func mixFile(
+        scratch: UnsafePointer<Float>,
+        frames: Int,
+        into outputData: UnsafeMutablePointer<AudioBufferList>
+    ) {
+        let output = UnsafeMutableAudioBufferListPointer(outputData)
+        if output.count == 1, let outData = output[0].mData {
+            let channels = max(1, Int(output[0].mNumberChannels == 0 ? 2 : output[0].mNumberChannels))
+            let outFrames = Int(output[0].mDataByteSize) / (MemoryLayout<Float>.stride * channels)
+            let count = min(frames, outFrames)
+            let outSamples = outData.assumingMemoryBound(to: Float.self)
+            for frame in 0..<count {
+                for channel in 0..<channels {
+                    outSamples[frame * channels + channel] += scratch[frame * 2 + min(channel, 1)]
+                }
+            }
+            return
+        }
+        for (channel, buffer) in output.enumerated() {
+            guard let dst = buffer.mData else { continue }
+            let count = min(frames, Int(buffer.mDataByteSize) / MemoryLayout<Float>.stride)
+            let outSamples = dst.assumingMemoryBound(to: Float.self)
+            let srcChannel = min(channel, 1)
+            for frame in 0..<count {
+                outSamples[frame] += scratch[frame * 2 + srcChannel]
+            }
+        }
+    }
+
+    private func allocateScratch() {
+        deallocateScratch()
+        let count = fileScratchFrameCapacity * 2
+        let pointer = UnsafeMutablePointer<Float>.allocate(capacity: count)
+        pointer.initialize(repeating: 0, count: count)
+        fileScratch = pointer
+    }
+
+    private func deallocateScratch() {
+        guard let scratch = fileScratch else { return }
+        scratch.deinitialize(count: fileScratchFrameCapacity * 2)
+        scratch.deallocate()
+        fileScratch = nil
+    }
 }
 
 private final class MeterState {
     private let lock = NSLock()
     private var peak: Float = 0
     private var lastPublish: CFAbsoluteTime = 0
+    private var lastPublished: Float = 0
+
+    var lastValue: Float {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastPublished
+    }
 
     func reset() {
         lock.lock()
         peak = 0
         lastPublish = 0
+        lastPublished = 0
         lock.unlock()
     }
 
@@ -324,6 +421,7 @@ private final class MeterState {
         guard now - lastPublish >= 0.05 else { return nil }
         lastPublish = now
         let value = Self.meterLevel(from: peak)
+        lastPublished = value
         peak *= 0.7
         return value
     }
