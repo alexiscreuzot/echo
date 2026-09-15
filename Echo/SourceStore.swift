@@ -31,7 +31,9 @@ final class SourceStore {
                 displayName: candidate.displayName,
                 enabled: true,
                 muted: true,
-                processObjectID: candidate.processObjectID ?? ProcessEnumerator.processObjectID(for: candidate.bundleID)
+                processObjectIDs: candidate.processObjectIDs.isEmpty
+                    ? ProcessEnumerator.processObjectIDs(for: candidate.bundleID)
+                    : candidate.processObjectIDs
             )
         )
         persist()
@@ -56,7 +58,7 @@ final class SourceStore {
 
     func refreshProcessObjects() {
         for index in sources.indices {
-            sources[index].processObjectID = ProcessEnumerator.processObjectID(for: sources[index].bundleID)
+            sources[index].processObjectIDs = ProcessEnumerator.processObjectIDs(for: sources[index].bundleID)
         }
     }
 
@@ -88,7 +90,7 @@ final class SourceStore {
                 displayName: $0.displayName,
                 enabled: $0.enabled,
                 muted: $0.muted,
-                processObjectID: nil
+                processObjectIDs: []
             )
         }
     }

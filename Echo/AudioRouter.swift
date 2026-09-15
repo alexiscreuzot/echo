@@ -1,14 +1,19 @@
-import CoreAudio
 import Observation
 
 @Observable
 final class AudioRouter {
+    let filePlayer: FilePlayer
     private(set) var isRunning = false
     private(set) var status = "Idle"
     private(set) var levels: [String: Float] = [:]
 
     private let capture = AudioCapture()
     private var routeDescription = ""
+    private var lastSources: [AudioSource] = []
+
+    init(filePlayer: FilePlayer) {
+        self.filePlayer = filePlayer
+    }
 
     func checkDevice() {
         if !isRunning {
@@ -33,6 +38,7 @@ final class AudioRouter {
     func start(sources: [AudioSource]) {
         do {
             try startRouting(sources: sources)
+            filePlayer.play()
         } catch {
             stop()
             status = error.localizedDescription
@@ -40,6 +46,7 @@ final class AudioRouter {
     }
 
     func stop() {
+        filePlayer.pause()
         capture.stop()
         levels = [:]
         isRunning = false
@@ -56,28 +63,46 @@ final class AudioRouter {
         }
     }
 
+    func report(_ message: String) {
+        status = message
+    }
+
+    func refreshFileStatus() {
+        guard isRunning else { return }
+        updateRouteDescription()
+    }
+
     private func startRouting(sources: [AudioSource]) throws {
         guard EchoDevice.objectID() != nil else { throw EchoError.deviceMissing }
 
-        let routed = sources.filter { $0.enabled && $0.isActive }.compactMap { source -> (AudioSource, AudioObjectID)? in
-            guard let processID = source.processObjectID else { return nil }
-            return (source, processID)
-        }
-        let muted = routed.filter(\.0.muted)
-        let unmuted = routed.filter { !$0.0.muted }
+        let routed = sources.filter { $0.enabled && $0.isActive }
+        let muted = routed.filter(\.muted).flatMap(\.processObjectIDs)
+        let unmuted = routed.filter { !$0.muted }.flatMap(\.processObjectIDs)
 
         try capture.start(
-            mutedProcessIDs: muted.map(\.1),
-            unmutedProcessIDs: unmuted.map(\.1),
-            bundleIDs: routed.map(\.0.bundleID)
+            mutedProcessIDs: muted,
+            unmutedProcessIDs: unmuted,
+            bundleIDs: routed.map(\.bundleID),
+            filePlayer: filePlayer
         ) { [weak self] levels in
             guard let self, self.isRunning else { return }
             self.levels = levels
+            self.filePlayer.publishProgress()
         }
 
         isRunning = true
-        let names = sources.filter(\.enabled).map(\.displayName)
-        routeDescription = "Routing \(names.joined(separator: ", ")) → Echo"
+        lastSources = sources
+        updateRouteDescription()
+    }
+
+    private func updateRouteDescription() {
+        var names = lastSources.filter(\.enabled).map(\.displayName)
+        if let fileName = filePlayer.fileName {
+            names.append(fileName)
+        }
+        routeDescription = names.isEmpty
+            ? "Routing to Echo"
+            : "Routing \(names.joined(separator: ", "))"
         refreshRunningStatus()
     }
 

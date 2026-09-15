@@ -11,6 +11,7 @@
 		8A1E30000000000000000002 /* AudioSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E10000000000000000002 /* AudioSource.swift */; };
 		8A1E30000000000000000003 /* SourceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E10000000000000000003 /* SourceStore.swift */; };
 		8A1E30000000000000000004 /* AudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E10000000000000000004 /* AudioCapture.swift */; };
+		8A1E3000000000000000000A /* FilePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E1000000000000000000E /* FilePlayer.swift */; };
 		8A1E30000000000000000005 /* AudioRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E10000000000000000005 /* AudioRouter.swift */; };
 		8A1E30000000000000000006 /* SourceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E10000000000000000006 /* SourceListView.swift */; };
 		8A1E30000000000000000007 /* EchoDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E10000000000000000007 /* EchoDevice.swift */; };
@@ -42,6 +43,7 @@
 		8A1E10000000000000000002 /* AudioSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSource.swift; sourceTree = "<group>"; };
 		8A1E10000000000000000003 /* SourceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceStore.swift; sourceTree = "<group>"; };
 		8A1E10000000000000000004 /* AudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapture.swift; sourceTree = "<group>"; };
+		8A1E1000000000000000000E /* FilePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePlayer.swift; sourceTree = "<group>"; };
 		8A1E10000000000000000005 /* AudioRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRouter.swift; sourceTree = "<group>"; };
 		8A1E10000000000000000006 /* SourceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceListView.swift; sourceTree = "<group>"; };
 		8A1E10000000000000000007 /* EchoDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoDevice.swift; sourceTree = "<group>"; };
@@ -106,6 +108,7 @@
 				8A1E10000000000000000003 /* SourceStore.swift */,
 				8A1E10000000000000000008 /* ProcessEnumerator.swift */,
 				8A1E10000000000000000004 /* AudioCapture.swift */,
+				8A1E1000000000000000000E /* FilePlayer.swift */,
 				8A1E10000000000000000005 /* AudioRouter.swift */,
 				8A1E10000000000000000007 /* EchoDevice.swift */,
 				8A1E1000000000000000000C /* DriverInstaller.swift */,
@@ -245,6 +248,7 @@
 				8A1E30000000000000000002 /* AudioSource.swift in Sources */,
 				8A1E30000000000000000003 /* SourceStore.swift in Sources */,
 				8A1E30000000000000000004 /* AudioCapture.swift in Sources */,
+				8A1E3000000000000000000A /* FilePlayer.swift in Sources */,
 				8A1E30000000000000000005 /* AudioRouter.swift in Sources */,
 				8A1E30000000000000000006 /* SourceListView.swift in Sources */,
 				8A1E30000000000000000007 /* EchoDevice.swift in Sources */,
@@ -395,7 +399,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.alexiscreuzot.echo;
 				PRODUCT_NAME = Echo;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -422,7 +426,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.alexiscreuzot.echo;
 				PRODUCT_NAME = Echo;
 				SWIFT_EMIT_LOC_STRINGS = YES;

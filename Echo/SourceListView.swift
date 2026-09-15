@@ -1,9 +1,13 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SourceListView: View {
     @Bindable var store: SourceStore
     @Bindable var router: AudioRouter
+    @Bindable var filePlayer: FilePlayer
     @State private var showingPicker = false
+    @State private var showingFileImporter = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,21 +26,58 @@ struct SourceListView: View {
         .onChange(of: store.sources) { _, newSources in
             router.sync(sources: newSources)
         }
+        .onChange(of: filePlayer.fileName) { _, _ in
+            router.refreshFileStatus()
+        }
         .sheet(isPresented: $showingPicker) {
             AppPickerView(store: store)
         }
+        .fileImporter(
+            isPresented: $showingFileImporter,
+            allowedContentTypes: [.audio],
+            allowsMultipleSelection: false
+        ) { result in
+            guard case .success(let urls) = result, let url = urls.first else { return }
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            filePlayer.load(url: url)
+            if let error = filePlayer.loadError {
+                router.report(error)
+            } else if router.isRunning {
+                filePlayer.play()
+            }
+        }
+    }
+
+    private var hasContent: Bool {
+        !store.sources.isEmpty || filePlayer.fileName != nil
+    }
+
+    private var canStart: Bool {
+        store.sources.contains(where: \.enabled) || filePlayer.fileName != nil
     }
 
     private var sourceList: some View {
         Group {
-            if store.sources.isEmpty {
+            if !hasContent {
                 emptyHero
             } else {
                 ScrollView {
-                    VStack(spacing: 12) {
-                        howItWorks
+                    VStack(spacing: 8) {
+                        Text("Select “Echo” as your microphone.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 4)
                         GlassEffectContainer(spacing: 8) {
                             LazyVStack(spacing: 8) {
+                                if filePlayer.fileName != nil {
+                                    PlayerCard(player: filePlayer, isRunning: router.isRunning) {
+                                        filePlayer.clear()
+                                        router.refreshFileStatus()
+                                    }
+                                }
                                 ForEach(store.sources) { source in
                                     SourceRow(
                                         source: source,
@@ -61,35 +102,48 @@ struct SourceListView: View {
     }
 
     private var emptyHero: some View {
-        howItWorks
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 16)
-    }
-
-    private var howItWorks: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 10) {
-                flowNode("App audio", systemImage: "speaker.wave.2.fill")
-                Image(systemName: "arrow.right")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                flowNode("Virtual device", systemImage: "waveform")
+        VStack(spacing: 14) {
+            HStack(spacing: 12) {
+                VStack(spacing: 10) {
+                    sourceChip("App", systemImage: "speaker.wave.2.fill") {
+                        showingPicker = true
+                    }
+                    sourceChip("File", systemImage: "doc.fill") {
+                        showingFileImporter = true
+                    }
+                }
+                MergeArrow()
+                    .frame(width: 34, height: 58)
+                Label("Virtual device", systemImage: "waveform")
+                    .font(.callout.weight(.medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12, style: .continuous))
             }
+            .shadow(color: .black.opacity(0.28), radius: 8, y: 1)
 
-            Text("Echo appears as a microphone you can select.")
+            Text("Echo appears as a microphone in other apps.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .shadow(color: .black.opacity(0.28), radius: 8, y: 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 24)
     }
 
-    private func flowNode(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.callout.weight(.medium))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .glassEffect(.regular, in: .rect(cornerRadius: 12, style: .continuous))
+    private func sourceChip(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.callout.weight(.medium))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .frame(width: 100)
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12, style: .continuous))
+        .help(title == "App" ? "Add an app" : "Add an audio file")
     }
 
     private var actionBar: some View {
@@ -105,38 +159,264 @@ struct SourceListView: View {
                     .lineLimit(1)
                     .help(router.status)
             }
+            .layoutPriority(1)
 
             Spacer(minLength: 8)
 
-            Button {
-                showingPicker = true
-            } label: {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(.glass)
-            .help("Add an app")
-
-            Button {
-                if router.isRunning {
-                    router.stop()
-                } else {
-                    store.refreshProcessObjects()
-                    router.start(sources: store.sources)
+            HStack(spacing: 8) {
+                Button {
+                    showingFileImporter = true
+                } label: {
+                    Image(systemName: "doc.fill")
+                        .frame(width: 16, height: 16)
                 }
-            } label: {
-                Label(
-                    router.isRunning ? "Stop" : "Start",
-                    systemImage: router.isRunning ? "stop.fill" : "play.fill"
-                )
-                .contentTransition(.symbolEffect(.replace))
+                .buttonStyle(.glass)
+                .help(filePlayer.fileName == nil ? "Add an audio file" : "Replace audio file")
+
+                Button {
+                    showingPicker = true
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.glass)
+                .help("Add an app")
+
+                Button {
+                    if router.isRunning {
+                        router.stop()
+                    } else {
+                        store.refreshProcessObjects()
+                        router.start(sources: store.sources)
+                    }
+                } label: {
+                    Label(
+                        router.isRunning ? "Stop" : "Start",
+                        systemImage: router.isRunning ? "stop.fill" : "play.fill"
+                    )
+                    .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.glassProminent)
+                .keyboardShortcut(.space, modifiers: [])
+                .disabled(!router.isRunning && !canStart)
             }
-            .buttonStyle(.glassProminent)
-            .keyboardShortcut(.space, modifiers: [])
-            .disabled(!router.isRunning && !store.sources.contains(where: { $0.enabled }))
+            .controlSize(.regular)
+            .fixedSize()
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 12)
+    }
+}
+
+private struct MergeArrow: View {
+    var body: some View {
+        MergeArrowShape()
+            .stroke(style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+            .foregroundStyle(.tertiary)
+    }
+}
+
+private struct MergeArrowShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let midY = rect.midY
+        let mergeX = rect.minX + rect.width * 0.52
+        let tipX = rect.maxX
+        let headX = rect.maxX - 5
+        let controlX = rect.minX + rect.width * 0.34
+
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + 8))
+        path.addCurve(
+            to: CGPoint(x: mergeX, y: midY),
+            control1: CGPoint(x: controlX, y: rect.minY + 8),
+            control2: CGPoint(x: mergeX - 10, y: midY)
+        )
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY - 8))
+        path.addCurve(
+            to: CGPoint(x: mergeX, y: midY),
+            control1: CGPoint(x: controlX, y: rect.maxY - 8),
+            control2: CGPoint(x: mergeX - 10, y: midY)
+        )
+        path.move(to: CGPoint(x: mergeX, y: midY))
+        path.addLine(to: CGPoint(x: headX, y: midY))
+        path.move(to: CGPoint(x: headX - 3, y: midY - 2.5))
+        path.addLine(to: CGPoint(x: tipX, y: midY))
+        path.addLine(to: CGPoint(x: headX - 3, y: midY + 2.5))
+        return path
+    }
+}
+
+private struct PlayerCard: View {
+    @Bindable var player: FilePlayer
+    let isRunning: Bool
+    let onRemove: () -> Void
+
+    @State private var isScrubbing = false
+    @State private var scrubProgress: Double = 0
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "waveform")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 36, height: 36)
+                .background(
+                    Color.secondary.opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                )
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text(player.fileName ?? "")
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(formatTime(displayedElapsed))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 32, alignment: .leading)
+                    SeekBar(progress: displayedProgress) { value, editing in
+                        if editing && !isScrubbing {
+                            isScrubbing = true
+                            player.beginScrub()
+                        }
+                        scrubProgress = value
+                        player.seek(to: value)
+                        if !editing {
+                            isScrubbing = false
+                            player.endScrub()
+                            if isRunning {
+                                player.play()
+                            }
+                        }
+                    }
+                    Text(formatTime(displayedRemaining))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 32, alignment: .trailing)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                player.toggleMute()
+            } label: {
+                Image(systemName: player.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.body)
+                    .foregroundStyle(player.muted ? Color.blue : Color.secondary.opacity(0.7))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.plain)
+            .help(player.muted ? "Play through speakers" : "Mute speakers")
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Remove")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .glassEffect(.regular, in: .rect(cornerRadius: 18, style: .continuous))
+        .contextMenu {
+            Button(player.muted ? "Play through speakers" : "Mute speakers") {
+                player.toggleMute()
+            }
+            Button("Remove", role: .destructive, action: onRemove)
+        }
+    }
+
+    private var displayedProgress: Double {
+        isScrubbing ? scrubProgress : player.progress
+    }
+
+    private var displayedElapsed: TimeInterval {
+        displayedProgress * player.duration
+    }
+
+    private var displayedRemaining: TimeInterval {
+        max(0, player.duration - displayedElapsed)
+    }
+
+    private func formatTime(_ time: TimeInterval) -> String {
+        let total = max(0, Int(time.rounded(.towardZero)))
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+private struct SeekBar: NSViewRepresentable {
+    var progress: Double
+    var onScrub: (Double, Bool) -> Void
+
+    func makeNSView(context: Context) -> SeekBarNSView {
+        let view = SeekBarNSView()
+        view.onScrub = onScrub
+        view.progress = progress
+        return view
+    }
+
+    func updateNSView(_ nsView: SeekBarNSView, context: Context) {
+        nsView.onScrub = onScrub
+        nsView.progress = progress
+        nsView.needsDisplay = true
+    }
+}
+
+final class SeekBarNSView: NSView {
+    var progress: Double = 0
+    var onScrub: ((Double, Bool) -> Void)?
+
+    override var isOpaque: Bool { false }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: 16)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let trackRect = NSRect(x: 0, y: bounds.midY - 2, width: bounds.width, height: 4)
+        NSColor.secondaryLabelColor.withAlphaComponent(0.15).setFill()
+        NSBezierPath(roundedRect: trackRect, xRadius: 2, yRadius: 2).fill()
+
+        let clamped = min(max(progress, 0), 1)
+        let fillWidth = max(0, bounds.width * clamped)
+        if fillWidth > 0 {
+            let fillRect = NSRect(x: 0, y: bounds.midY - 2, width: fillWidth, height: 4)
+            NSColor.controlAccentColor.setFill()
+            NSBezierPath(roundedRect: fillRect, xRadius: 2, yRadius: 2).fill()
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        scrub(with: event, editing: true)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        scrub(with: event, editing: true)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        scrub(with: event, editing: false)
+    }
+
+    private func scrub(with event: NSEvent, editing: Bool) {
+        let location = convert(event.locationInWindow, from: nil)
+        let width = max(bounds.width, 1)
+        let value = min(max(location.x / width, 0), 1)
+        onScrub?(value, editing)
     }
 }
 
@@ -363,7 +643,7 @@ struct AppPickerView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                if candidate.processObjectID != nil {
+                if !candidate.processObjectIDs.isEmpty {
                     Text("Audio")
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)

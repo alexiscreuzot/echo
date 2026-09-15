@@ -11,9 +11,13 @@ enum EchoWindowLayout {
 @main
 struct EchoApp: App {
     @State private var store = SourceStore()
-    @State private var router = AudioRouter()
+    @State private var filePlayer: FilePlayer
+    @State private var router: AudioRouter
 
     init() {
+        let player = FilePlayer()
+        _filePlayer = State(initialValue: player)
+        _router = State(initialValue: AudioRouter(filePlayer: player))
         DispatchQueue.main.async {
             Self.applyDockIcon()
         }
@@ -21,7 +25,7 @@ struct EchoApp: App {
 
     var body: some Scene {
         Window("Echo", id: "main") {
-            SourceListView(store: store, router: router)
+            SourceListView(store: store, router: router, filePlayer: filePlayer)
                 .containerBackground(.clear, for: .window)
                 .background(TransparentWindowBackground())
                 .background(.ultraThinMaterial)

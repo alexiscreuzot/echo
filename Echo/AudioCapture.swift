@@ -9,6 +9,7 @@ final class AudioCapture {
     private var ioProcID: AudioDeviceIOProcID?
     private let meter = MeterState()
     private var bundleIDs: [String] = []
+    private var filePlayer: FilePlayer?
     private var onLevels: (([String: Float]) -> Void)?
 
     deinit {
@@ -19,15 +20,19 @@ final class AudioCapture {
         mutedProcessIDs: [AudioObjectID],
         unmutedProcessIDs: [AudioObjectID],
         bundleIDs: [String],
+        filePlayer: FilePlayer,
         onLevels: @escaping ([String: Float]) -> Void
     ) throws {
         stop()
 
         let muted = Array(Set(mutedProcessIDs.filter { $0 != kAudioObjectUnknown }))
         let unmuted = Array(Set(unmutedProcessIDs.filter { $0 != kAudioObjectUnknown }))
-        guard !muted.isEmpty || !unmuted.isEmpty else { throw EchoError.noActiveSources }
+        guard !muted.isEmpty || !unmuted.isEmpty || filePlayer.hasFile else {
+            throw EchoError.noActiveSources
+        }
 
         self.bundleIDs = bundleIDs
+        self.filePlayer = filePlayer
         self.onLevels = onLevels
         meter.reset()
 
@@ -56,6 +61,7 @@ final class AudioCapture {
             unmutedTapID = 0
         }
         bundleIDs = []
+        filePlayer = nil
         onLevels = nil
         meter.reset()
     }
@@ -97,7 +103,7 @@ final class AudioCapture {
             }
         }
 
-        let aggregateDescription: [String: Any] = [
+        var aggregateDescription: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Echo Mix",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
             kAudioAggregateDeviceIsPrivateKey: true,
@@ -109,9 +115,11 @@ final class AudioCapture {
                 kAudioSubDeviceInputChannelsKey: 0,
                 kAudioSubDeviceOutputChannelsKey: 2,
                 kAudioSubDeviceDriftCompensationKey: true
-            ]],
-            kAudioAggregateDeviceTapListKey: tapEntries
+            ]]
         ]
+        if !tapEntries.isEmpty {
+            aggregateDescription[kAudioAggregateDeviceTapListKey] = tapEntries
+        }
 
         var newAggregateID = AudioObjectID()
         let status = AudioHardwareCreateAggregateDevice(aggregateDescription as CFDictionary, &newAggregateID)
@@ -175,13 +183,37 @@ final class AudioCapture {
         input inputData: UnsafePointer<AudioBufferList>,
         output outputData: UnsafeMutablePointer<AudioBufferList>
     ) {
-        let peak = Self.relayTap(from: inputData, to: outputData)
+        let tapPeak: Float
+        if Self.hasTapInput(inputData) {
+            tapPeak = Self.relayTap(from: inputData, to: outputData)
+        } else {
+            Self.zeroOutput(outputData)
+            tapPeak = 0
+        }
+        let filePeak = filePlayer?.render(into: outputData) ?? 0
+        let peak = max(tapPeak, filePeak)
         guard let value = meter.publish(peak: peak) else { return }
         let ids = bundleIDs
         let callback = onLevels
         DispatchQueue.main.async { [weak self] in
             guard self != nil else { return }
-            callback?(Dictionary(uniqueKeysWithValues: ids.map { ($0, value) }))
+            var entries = ids.map { ($0, value) }
+            entries.append((FilePlayer.levelKey, value))
+            callback?(Dictionary(uniqueKeysWithValues: entries))
+        }
+    }
+
+    private static func hasTapInput(_ inputData: UnsafePointer<AudioBufferList>) -> Bool {
+        let input = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
+        return input.contains { $0.mData != nil && $0.mDataByteSize > 0 }
+    }
+
+    private static func zeroOutput(_ outputData: UnsafeMutablePointer<AudioBufferList>) {
+        let output = UnsafeMutableAudioBufferListPointer(outputData)
+        for buffer in output {
+            if let dst = buffer.mData {
+                memset(dst, 0, Int(buffer.mDataByteSize))
+            }
         }
     }
 

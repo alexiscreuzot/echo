@@ -7,11 +7,11 @@ struct AudioSource: Identifiable, Hashable {
     var displayName: String
     var enabled: Bool
     var muted: Bool = true
-    var processObjectID: AudioObjectID?
+    var processObjectIDs: [AudioObjectID] = []
 
     var id: String { bundleID }
     var isActive: Bool {
-        processObjectID != nil && processObjectID != kAudioObjectUnknown
+        !processObjectIDs.isEmpty
     }
 
     var icon: NSImage {
@@ -47,7 +47,7 @@ struct PersistedSource: Codable, Equatable {
 struct RunningAppCandidate: Identifiable, Hashable {
     var bundleID: String
     var displayName: String
-    var processObjectID: AudioObjectID?
+    var processObjectIDs: [AudioObjectID] = []
 
     var id: String { bundleID }
 

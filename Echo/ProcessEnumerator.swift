@@ -1,5 +1,6 @@
 import AppKit
 import CoreAudio
+import Darwin
 
 enum ProcessEnumerator {
     static func audioProcesses() -> [(bundleID: String, processObjectID: AudioObjectID, pid: pid_t)] {
@@ -33,7 +34,10 @@ enum ProcessEnumerator {
         }
 
         return processIDs.compactMap { objectID in
-            guard let bundleID = stringProperty(objectID, kAudioProcessPropertyBundleID), !bundleID.isEmpty else {
+            guard objectID != kAudioObjectUnknown,
+                  let bundleID = stringProperty(objectID, kAudioProcessPropertyBundleID),
+                  !bundleID.isEmpty
+            else {
                 return nil
             }
             let pid = pidProperty(objectID) ?? 0
@@ -42,21 +46,30 @@ enum ProcessEnumerator {
     }
 
     static func candidates(excluding excludedBundleIDs: Set<String>) -> [RunningAppCandidate] {
-        var byBundle: [String: RunningAppCandidate] = [:]
+        let regularApps = regularRunningApps()
+        let ownBundleID = Bundle.main.bundleIdentifier
+        var idsByOwner: [String: [AudioObjectID]] = [:]
 
         for process in audioProcesses() {
-            guard !excludedBundleIDs.contains(process.bundleID) else { continue }
-            let name = NSRunningApplication(processIdentifier: process.pid)?.localizedName
-                ?? displayName(for: process.bundleID)
-            byBundle[process.bundleID] = RunningAppCandidate(
-                bundleID: process.bundleID,
-                displayName: name,
-                processObjectID: process.processObjectID
+            let owner = owningBundleID(
+                pid: process.pid,
+                processBundleID: process.bundleID,
+                regularApps: regularApps
+            )
+            guard owner != ownBundleID, !excludedBundleIDs.contains(owner) else { continue }
+            idsByOwner[owner, default: []].append(process.processObjectID)
+        }
+
+        var byBundle: [String: RunningAppCandidate] = [:]
+        for (bundleID, ids) in idsByOwner {
+            byBundle[bundleID] = RunningAppCandidate(
+                bundleID: bundleID,
+                displayName: displayName(for: bundleID, regularApps: regularApps),
+                processObjectIDs: uniqueSorted(ids)
             )
         }
 
-        let ownBundleID = Bundle.main.bundleIdentifier
-        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+        for app in regularApps {
             guard let bundleID = app.bundleIdentifier,
                   bundleID != ownBundleID,
                   !excludedBundleIDs.contains(bundleID),
@@ -65,15 +78,25 @@ enum ProcessEnumerator {
             byBundle[bundleID] = RunningAppCandidate(
                 bundleID: bundleID,
                 displayName: app.localizedName ?? displayName(for: bundleID),
-                processObjectID: nil
+                processObjectIDs: []
             )
         }
 
         return byBundle.values.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
 
-    static func processObjectID(for bundleID: String) -> AudioObjectID? {
-        audioProcesses().first(where: { $0.bundleID == bundleID })?.processObjectID
+    static func processObjectIDs(for bundleID: String) -> [AudioObjectID] {
+        let regularApps = regularRunningApps()
+        var seen = Set<AudioObjectID>()
+        var ids: [AudioObjectID] = []
+
+        for process in audioProcesses() {
+            guard belongs(process, to: bundleID, regularApps: regularApps) else { continue }
+            guard seen.insert(process.processObjectID).inserted else { continue }
+            ids.append(process.processObjectID)
+        }
+
+        return ids.sorted()
     }
 
     static func installedApplications(excluding excludedBundleIDs: Set<String>) -> [RunningAppCandidate] {
@@ -149,7 +172,7 @@ enum ProcessEnumerator {
         byBundle[bundleID] = RunningAppCandidate(
             bundleID: bundleID,
             displayName: name,
-            processObjectID: nil
+            processObjectIDs: []
         )
     }
 
@@ -160,6 +183,112 @@ enum ProcessEnumerator {
             return name
         }
         return bundleID
+    }
+
+    private static func displayName(for bundleID: String, regularApps: [NSRunningApplication]) -> String {
+        if let name = regularApps.first(where: { $0.bundleIdentifier == bundleID })?.localizedName {
+            return name
+        }
+        return displayName(for: bundleID)
+    }
+
+    private static func belongs(
+        _ process: (bundleID: String, processObjectID: AudioObjectID, pid: pid_t),
+        to bundleID: String,
+        regularApps: [NSRunningApplication]
+    ) -> Bool {
+        let owner = owningBundleID(pid: process.pid, processBundleID: process.bundleID, regularApps: regularApps)
+        if owner == bundleID || process.bundleID == bundleID {
+            return true
+        }
+        guard process.bundleID.hasPrefix(bundleID + ".") else { return false }
+        if let longer = longestPrefixMatch(process.bundleID, among: regularApps),
+           longer != bundleID,
+           longer.hasPrefix(bundleID + ".") {
+            return false
+        }
+        return true
+    }
+
+    private static func owningBundleID(
+        pid: pid_t,
+        processBundleID: String,
+        regularApps: [NSRunningApplication]
+    ) -> String {
+        if let ancestor = regularAncestorBundleID(of: pid) {
+            return ancestor
+        }
+        if pid > 0, let url = NSRunningApplication(processIdentifier: pid)?.bundleURL,
+           let owner = outermostAppBundleID(at: url) {
+            return owner
+        }
+        if let match = longestPrefixMatch(processBundleID, among: regularApps) {
+            return match
+        }
+        return processBundleID
+    }
+
+    private static func regularAncestorBundleID(of pid: pid_t) -> String? {
+        guard pid > 0 else { return nil }
+        var current = pid
+        var seen = Set<pid_t>()
+        while seen.insert(current).inserted {
+            if let app = NSRunningApplication(processIdentifier: current),
+               app.activationPolicy == .regular,
+               let bundleID = app.bundleIdentifier,
+               !bundleID.isEmpty {
+                return bundleID
+            }
+            guard let parent = parentPID(of: current), parent > 1 else { return nil }
+            current = parent
+        }
+        return nil
+    }
+
+    private static func parentPID(of pid: pid_t) -> pid_t? {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.stride)
+        let bytes = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size)
+        guard bytes == size else { return nil }
+        let ppid = pid_t(info.pbi_ppid)
+        return ppid > 0 && ppid != pid ? ppid : nil
+    }
+
+    private static func outermostAppBundleID(at url: URL) -> String? {
+        var current = url.standardizedFileURL
+        var lastApp: URL?
+        while current.path != "/" {
+            if current.pathExtension == "app" {
+                lastApp = current
+            }
+            current.deleteLastPathComponent()
+        }
+        guard let lastApp,
+              let bundle = Bundle(url: lastApp),
+              let bundleID = bundle.bundleIdentifier,
+              !bundleID.isEmpty
+        else { return nil }
+        return bundleID
+    }
+
+    private static func longestPrefixMatch(_ processBundleID: String, among apps: [NSRunningApplication]) -> String? {
+        var best: String?
+        for app in apps {
+            guard let appID = app.bundleIdentifier, !appID.isEmpty else { continue }
+            let matches = processBundleID == appID || processBundleID.hasPrefix(appID + ".")
+            guard matches else { continue }
+            if let currentBest = best, appID.count <= currentBest.count { continue }
+            best = appID
+        }
+        return best
+    }
+
+    private static func regularRunningApps() -> [NSRunningApplication] {
+        NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
+    }
+
+    private static func uniqueSorted(_ ids: [AudioObjectID]) -> [AudioObjectID] {
+        Array(Set(ids)).sorted()
     }
 
     private static func stringProperty(_ objectID: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
