@@ -172,7 +172,7 @@ struct SourceListView: View {
                 Button {
                     showingFileImporter = true
                 } label: {
-                    Image(systemName: "doc.fill")
+                    Image(systemName: "waveform")
                         .frame(width: 16, height: 16)
                 }
                 .buttonStyle(.glass)
@@ -195,15 +195,18 @@ struct SourceListView: View {
                         router.start(sources: store.sources)
                     }
                 } label: {
-                    Label(
-                        router.isRunning ? "Stop" : "Start",
-                        systemImage: router.isRunning ? "stop.fill" : "play.fill"
-                    )
-                    .contentTransition(.symbolEffect(.replace))
+                    Image(systemName: router.isRunning ? "stop.fill" : "play.fill")
+                        .frame(width: 16, height: 16)
+                        .offset(x: router.isRunning ? 0 : 0.5)
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+                .tint(router.isRunning ? .red : .accentColor)
                 .keyboardShortcut(.space, modifiers: [])
                 .disabled(!router.isRunning && !canStart)
+                .help(router.isRunning ? "Stop" : "Start")
+                .accessibilityLabel(router.isRunning ? "Stop" : "Start")
             }
             .controlSize(.regular)
             .fixedSize()
@@ -281,9 +284,7 @@ private struct PlayerCard: View {
                         .foregroundStyle(.secondary)
                         .frame(minWidth: 32, alignment: .leading)
                     if player.isLoading {
-                        ProgressView()
-                            .controlSize(.small)
-                            .frame(maxWidth: .infinity, minHeight: 16)
+                        LoadingSeekBar()
                     } else {
                         SeekBar(progress: displayedProgress) { value, editing in
                             if editing && !isScrubbing {
@@ -361,6 +362,38 @@ private struct PlayerCard: View {
     }
 }
 
+private struct LoadingSeekBar: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+            let period: TimeInterval = 1.2
+            let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
+
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(Color.secondary.opacity(0.15))
+                .frame(height: 4)
+                .overlay {
+                    GeometryReader { geo in
+                        let width = max(geo.size.width * 0.4, 32)
+                        LinearGradient(
+                            colors: [
+                                Color.primary.opacity(0.04),
+                                Color.primary.opacity(0.22),
+                                Color.primary.opacity(0.04)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: width)
+                        .offset(x: -width + CGFloat(t) * (geo.size.width + width))
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                }
+        }
+        .frame(maxWidth: .infinity, minHeight: 16)
+        .accessibilityLabel("Loading")
+    }
+}
+
 private struct SeekBar: NSViewRepresentable {
     var progress: Double
     var onScrub: (Double, Bool) -> Void
@@ -384,6 +417,7 @@ final class SeekBarNSView: NSView {
     var onScrub: ((Double, Bool) -> Void)?
 
     override var isOpaque: Bool { false }
+    override var mouseDownCanMoveWindow: Bool { false }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -396,6 +430,8 @@ final class SeekBarNSView: NSView {
     override var intrinsicContentSize: NSSize {
         NSSize(width: NSView.noIntrinsicMetric, height: 16)
     }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         let trackRect = NSRect(x: 0, y: bounds.midY - 2, width: bounds.width, height: 4)
@@ -413,14 +449,20 @@ final class SeekBarNSView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         scrub(with: event, editing: true)
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        scrub(with: event, editing: true)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        scrub(with: event, editing: false)
+        while true {
+            guard let next = window?.nextEvent(
+                matching: [.leftMouseUp, .leftMouseDragged],
+                until: .distantFuture,
+                inMode: .eventTracking,
+                dequeue: true
+            ) else { break }
+            if next.type == .leftMouseDragged {
+                scrub(with: next, editing: true)
+            } else {
+                scrub(with: next, editing: false)
+                break
+            }
+        }
     }
 
     private func scrub(with event: NSEvent, editing: Bool) {
@@ -535,10 +577,9 @@ private struct OutputMeter: View {
     private var meterGradient: LinearGradient {
         LinearGradient(
             stops: [
-                .init(color: .green, location: 0),
-                .init(color: .green, location: 0.55),
-                .init(color: .orange, location: 0.72),
-                .init(color: .red, location: 1)
+                .init(color: Color.accentColor.opacity(0.4), location: 0),
+                .init(color: Color.accentColor.opacity(0.75), location: 0.55),
+                .init(color: Color.accentColor, location: 1)
             ],
             startPoint: .leading,
             endPoint: .trailing
