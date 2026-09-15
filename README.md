@@ -23,9 +23,19 @@ Requires macOS 26+.
 ## Install
 
 ```bash
-brew tap alexiscreuzot/echo
+brew tap alexiscreuzot/echo https://github.com/alexiscreuzot/echo
 brew trust alexiscreuzot/echo
 brew install --cask echo
+```
+
+The tap is this repo (`Casks/echo.rb`). Homebrew’s short `brew tap alexiscreuzot/echo` looks for a separate `homebrew-echo` repository — pass the URL so it uses this one.
+
+Already tapped the old repo:
+
+```bash
+brew tap --custom-remote alexiscreuzot/echo https://github.com/alexiscreuzot/echo
+brew update
+brew upgrade --cask echo
 ```
 
 First launch asks for an administrator password to install the Echo audio device.
