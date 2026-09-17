@@ -101,8 +101,8 @@ final class AudioRouter {
             names.append(fileName)
         }
         routeDescription = names.isEmpty
-            ? "Routing to Echo"
-            : "Routing \(names.joined(separator: ", "))"
+            ? "→ Echo"
+            : "\(names.joined(separator: ", ")) → Echo"
         refreshRunningStatus()
     }
 

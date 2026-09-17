@@ -56,7 +56,8 @@ enum ProcessEnumerator {
                 processBundleID: process.bundleID,
                 regularApps: regularApps
             )
-            guard owner != ownBundleID, !excludedBundleIDs.contains(owner) else { continue }
+            guard owner != ownBundleID, !excludedBundleIDs.contains(owner),
+                  isRealApp(owner, regularApps: regularApps) else { continue }
             idsByOwner[owner, default: []].append(process.processObjectID)
         }
 
@@ -285,6 +286,11 @@ enum ProcessEnumerator {
 
     private static func regularRunningApps() -> [NSRunningApplication] {
         NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
+    }
+
+    private static func isRealApp(_ bundleID: String, regularApps: [NSRunningApplication]) -> Bool {
+        if regularApps.contains(where: { $0.bundleIdentifier == bundleID }) { return true }
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil
     }
 
     private static func uniqueSorted(_ ids: [AudioObjectID]) -> [AudioObjectID] {

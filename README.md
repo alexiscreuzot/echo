@@ -5,7 +5,7 @@
 
 Minimal macOS loopback: send a specific app’s audio into the iOS Simulator.
 
-Add one or more apps as sources in the Echo window, press Start, then set the Simulator’s microphone to **Echo**.
+Add one or more apps as sources from the menu bar extra, press Start, then set the Simulator’s microphone to **Echo**.
 
 <!-- Drop a window capture at docs/screenshot.png to show it here.
 ![Echo](docs/screenshot.png)
@@ -43,7 +43,7 @@ First launch asks for an administrator password to install the Echo audio device
 ## Architecture
 
 - **Echo.driver** — Core Audio HAL plugin. Virtual 2-channel 48 kHz device. Audio written to its output is readable on its input.
-- **Echo.app** — Windowed SwiftUI app. Taps the apps you add (process taps), mixes them, and plays the result into Echo.
+- **Echo.app** — Menu bar SwiftUI app. Taps the apps you add (process taps), mixes them, and plays the result into Echo.
 
 ## Build
 
@@ -78,7 +78,7 @@ Confirm **Echo** appears in Audio MIDI Setup.
 
 ## Use with the Simulator
 
-1. Open Echo and add the host apps you want to tap.
+1. Open Echo from the menu bar and add the host apps you want to tap.
 2. Press Start. macOS may ask for System Audio Recording access once per app.
 3. In the iOS Simulator: **I/O → Audio Input → Echo**.
 4. Play audio in the source app. The Simulator sees it as microphone input.

@@ -7,17 +7,31 @@ struct SourceListView: View {
     @Bindable var router: AudioRouter
     @Bindable var filePlayer: FilePlayer
     @State private var showingPicker = false
-    @State private var showingFileImporter = false
+    @State private var confirmingQuit = false
+    @State private var quitResetTask: Task<Void, Never>?
+    @State private var panel: NSWindow?
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            sourceList
-                .frame(maxHeight: .infinity)
-            actionBar
-            OutputMeter(level: outputLevel)
+        Group {
+            if showingPicker {
+                AppPickerView(store: store) {
+                    showingPicker = false
+                }
+            } else {
+                mainContent
+            }
         }
-        .padding(.top, 36)
-        .frame(minWidth: 300, minHeight: EchoWindowLayout.minHeight)
+        .frame(width: EchoPanelLayout.width)
+        .background(WindowAccessor { panel = $0 })
+        .onChange(of: showingPicker) { _, isShowing in
+            guard !isShowing else { return }
+            applyPanelHeight(contentHeight)
+        }
+        .onChange(of: contentHeight) { _, height in
+            guard !showingPicker else { return }
+            applyPanelHeight(height)
+        }
         .onAppear {
             store.refreshProcessObjects()
         }
@@ -35,22 +49,21 @@ struct SourceListView: View {
                 router.report(error)
             }
         }
-        .sheet(isPresented: $showingPicker) {
-            AppPickerView(store: store)
+    }
+
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            statusBar
+            sourceList
+            addBar
+            OutputMeter(level: outputLevel)
         }
-        .fileImporter(
-            isPresented: $showingFileImporter,
-            allowedContentTypes: [.audio],
-            allowsMultipleSelection: false
-        ) { result in
-            guard case .success(let urls) = result, let url = urls.first else { return }
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            filePlayer.load(url: url)
-            if router.isRunning {
-                filePlayer.play()
-            }
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
+            contentHeight = height
         }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .clipped()
     }
 
     private var hasContent: Bool {
@@ -71,55 +84,54 @@ struct SourceListView: View {
             if !hasContent {
                 emptyHero
             } else {
-                ScrollView {
-                    VStack(spacing: 8) {
-                        Text("Select “Echo” as your microphone.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 4)
-                        GlassEffectContainer(spacing: 8) {
-                            LazyVStack(spacing: 8) {
-                                if filePlayer.fileName != nil {
-                                    PlayerCard(player: filePlayer, isRunning: router.isRunning) {
+                VStack(spacing: 8) {
+                    GlassEffectContainer(spacing: 8) {
+                        VStack(spacing: 8) {
+                            if filePlayer.fileName != nil {
+                                PlayerCard(player: filePlayer, isRunning: router.isRunning) {
+                                    withAnimation(.snappy(duration: 0.25)) {
                                         filePlayer.clear()
                                         router.refreshFileStatus()
                                     }
                                 }
-                                ForEach(store.sources) { source in
-                                    SourceRow(source: source) {
-                                        store.toggle(source)
-                                    } onMute: {
-                                        store.toggleMute(source)
-                                    } onRemove: {
+                                .transition(.asymmetric(insertion: .opacity, removal: .identity))
+                            }
+                            ForEach(store.sources) { source in
+                                SourceRow(source: source) {
+                                    store.toggle(source)
+                                } onMute: {
+                                    store.toggleMute(source)
+                                } onRemove: {
+                                    withAnimation(.snappy(duration: 0.25)) {
                                         store.remove(id: source.bundleID)
                                     }
                                 }
+                                .transition(.asymmetric(insertion: .opacity, removal: .identity))
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
                 }
+                .padding(.horizontal, 12)
+                .padding(.top, 2)
+                .padding(.bottom, 16)
             }
         }
     }
 
     private var emptyHero: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 12) {
-                VStack(spacing: 10) {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                VStack(spacing: 8) {
                     sourceChip("App", systemImage: "speaker.wave.2.fill") {
                         showingPicker = true
                     }
                     sourceChip("File", systemImage: "doc.fill") {
-                        showingFileImporter = true
+                        importAudioFile()
                     }
                 }
                 MergeArrow()
-                    .frame(width: 34, height: 58)
-                Label("Virtual device", systemImage: "waveform")
+                    .frame(width: 28, height: 52)
+                Label("Echo", systemImage: "waveform")
                     .font(.callout.weight(.medium))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
@@ -133,8 +145,9 @@ struct SourceListView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 6)
     }
 
     private func sourceChip(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
@@ -143,7 +156,7 @@ struct SourceListView: View {
                 .font(.callout.weight(.medium))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .frame(width: 100)
+                .frame(width: 88)
                 .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -151,7 +164,7 @@ struct SourceListView: View {
         .help(title == "App" ? "Add an app" : "Add an audio file")
     }
 
-    private var actionBar: some View {
+    private var statusBar: some View {
         HStack(spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "circle.fill")
@@ -168,52 +181,128 @@ struct SourceListView: View {
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 8) {
-                Button {
-                    showingFileImporter = true
-                } label: {
-                    Image(systemName: "waveform")
-                        .frame(width: 16, height: 16)
-                }
-                .buttonStyle(.glass)
-                .help(filePlayer.fileName == nil ? "Add an audio file" : "Replace audio file")
-
-                Button {
-                    showingPicker = true
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 16, height: 16)
-                }
-                .buttonStyle(.glass)
-                .help("Add an app")
-
-                Button {
-                    if router.isRunning {
-                        router.stop()
-                    } else {
-                        store.refreshProcessObjects()
-                        router.start(sources: store.sources)
+            Button {
+                if confirmingQuit {
+                    NSApplication.shared.terminate(nil)
+                } else {
+                    confirmingQuit = true
+                    quitResetTask?.cancel()
+                    quitResetTask = Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(3))
+                        guard !Task.isCancelled else { return }
+                        confirmingQuit = false
                     }
-                } label: {
-                    Image(systemName: router.isRunning ? "stop.fill" : "play.fill")
-                        .frame(width: 16, height: 16)
-                        .offset(x: router.isRunning ? 0 : 0.5)
-                        .contentTransition(.symbolEffect(.replace))
                 }
-                .buttonStyle(.glassProminent)
-                .buttonBorderShape(.circle)
-                .tint(router.isRunning ? .red : .accentColor)
-                .keyboardShortcut(.space, modifiers: [])
-                .disabled(!router.isRunning && !canStart)
-                .help(router.isRunning ? "Stop" : "Start")
-                .accessibilityLabel(router.isRunning ? "Stop" : "Start")
+            } label: {
+                Image(systemName: confirmingQuit ? "checkmark" : "power")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(confirmingQuit ? .red : .secondary)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+                    .contentTransition(.symbolEffect(.replace))
             }
-            .controlSize(.regular)
-            .fixedSize()
+            .buttonStyle(.plain)
+            .help(confirmingQuit ? "Click again to quit" : "Quit Echo")
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+    }
+
+    private var addBar: some View {
+        HStack(spacing: 8) {
+            Button {
+                importAudioFile()
+            } label: {
+                Image(systemName: "waveform")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.glass)
+            .help(filePlayer.fileName == nil ? "Add an audio file" : "Replace audio file")
+
+            Button {
+                showingPicker = true
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.glass)
+            .help("Add an app")
+
+            Spacer(minLength: 8)
+
+            Button {
+                if router.isRunning {
+                    router.stop()
+                } else {
+                    store.refreshProcessObjects()
+                    router.start(sources: store.sources)
+                }
+            } label: {
+                Image(systemName: router.isRunning ? "stop.fill" : "play.fill")
+                    .frame(width: 18, height: 18)
+                    .offset(x: router.isRunning ? 0 : 0.5)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+            .tint(router.isRunning ? .red : .accentColor)
+            .keyboardShortcut(.space, modifiers: [])
+            .disabled(!router.isRunning && !canStart)
+            .help(router.isRunning ? "Stop" : "Start")
+            .accessibilityLabel(router.isRunning ? "Stop" : "Start")
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
         .padding(.bottom, 10)
+        .background(Color.secondary.opacity(0.08))
+        .overlay(alignment: .top) {
+            Divider()
+                .opacity(0.5)
+        }
+    }
+
+    private func importAudioFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.audio]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        withAnimation(.snappy(duration: 0.3)) {
+            filePlayer.load(url: url)
+        }
+        if router.isRunning {
+            filePlayer.play()
+        }
+    }
+
+    /// A menu bar panel grows to fit its content but never shrinks back on its own,
+    /// so the taller picker leaves the panel oversized once the list returns.
+    private func applyPanelHeight(_ height: CGFloat) {
+        guard let panel, height > 0 else { return }
+        let target = panel.frameRect(forContentRect: NSRect(x: 0, y: 0, width: panel.frame.width, height: height))
+        guard abs(panel.frame.height - target.height) > 0.5 else { return }
+        var frame = panel.frame
+        frame.origin.y += frame.height - target.height
+        frame.size.height = target.height
+        panel.setFrame(frame, display: true)
+    }
+}
+
+private struct WindowAccessor: NSViewRepresentable {
+    let onWindow: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { onWindow(view.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if nsView.window != nil {
+            onWindow(nsView.window)
+        }
     }
 }
 
@@ -266,12 +355,12 @@ private struct PlayerCard: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "waveform")
-                .font(.title3)
+                .font(.body)
                 .foregroundStyle(.secondary)
-                .frame(width: 36, height: 36)
+                .frame(width: 28, height: 28)
                 .background(
                     Color.secondary.opacity(0.12),
-                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
                 )
 
             VStack(alignment: .leading, spacing: 7) {
@@ -333,9 +422,9 @@ private struct PlayerCard: View {
             .buttonStyle(.plain)
             .help("Remove")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
         .contextMenu {
             Button(player.muted ? "Play through speakers" : "Mute speakers") {
                 player.toggleMute()
@@ -503,8 +592,8 @@ private struct SourceRow: View {
             Image(nsImage: source.icon)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 36, height: 36)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .frame(width: 28, height: 28)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .shadow(color: .black.opacity(0.22), radius: 4, y: 1)
 
             HStack(spacing: 6) {
@@ -541,9 +630,9 @@ private struct SourceRow: View {
             .buttonStyle(.plain)
             .help("Remove")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
         .opacity(source.enabled ? 1 : 0.48)
         .contextMenu {
             Button(source.enabled ? "Deactivate" : "Activate", action: onToggle)
@@ -589,13 +678,45 @@ private struct OutputMeter: View {
 
 struct AppPickerView: View {
     @Bindable var store: SourceStore
-    @Environment(\.dismiss) private var dismiss
+    let onClose: () -> Void
     @State private var query = ""
     @State private var running: [RunningAppCandidate] = []
     @State private var installed: [RunningAppCandidate] = []
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Button(action: onClose) {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.glass)
+                .keyboardShortcut(.cancelAction)
+                .help("Back")
+
+                Text("Add Source")
+                    .font(.callout.weight(.semibold))
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
+
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("Search apps", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.callout)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .glassEffect(.regular, in: .rect(cornerRadius: 8, style: .continuous))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+
             Group {
                 if running.isEmpty && installed.isEmpty {
                     ContentUnavailableView(
@@ -624,21 +745,13 @@ struct AppPickerView: View {
                                 }
                             }
                         }
-                        .padding(16)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 12)
                     }
                 }
             }
-            .navigationTitle("Add Source")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .buttonStyle(.glass)
-                        .keyboardShortcut(.cancelAction)
-                }
-            }
-            .searchable(text: $query, placement: .automatic, prompt: "Search apps")
         }
-        .frame(width: 360, height: 440)
+        .frame(width: EchoPanelLayout.width, height: 360)
         .onAppear {
             running = store.availableCandidates()
             var excluded = Set(store.sources.map(\.bundleID))
@@ -671,8 +784,12 @@ struct AppPickerView: View {
 
     private func candidateRow(_ candidate: RunningAppCandidate) -> some View {
         Button {
-            store.add(candidate)
-            dismiss()
+            onClose()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                withAnimation(.snappy(duration: 0.3)) {
+                    store.add(candidate)
+                }
+            }
         } label: {
             HStack(spacing: 10) {
                 Image(nsImage: candidate.icon)
