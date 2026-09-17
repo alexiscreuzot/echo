@@ -3,6 +3,8 @@ import SwiftUI
 
 enum EchoPanelLayout {
     static let width: CGFloat = 280
+    static let pickerHeight: CGFloat = 360
+    static let resizeDuration: TimeInterval = 0.25
 }
 
 @main

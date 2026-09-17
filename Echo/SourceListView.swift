@@ -11,6 +11,8 @@ struct SourceListView: View {
     @State private var quitResetTask: Task<Void, Never>?
     @State private var panel: NSWindow?
     @State private var contentHeight: CGFloat = 0
+    @State private var panelHeight: CGFloat = 0
+    @State private var pendingFileURL: URL?
 
     var body: some View {
         Group {
@@ -22,18 +24,30 @@ struct SourceListView: View {
                 mainContent
             }
         }
-        .frame(width: EchoPanelLayout.width)
+        .frame(
+            width: EchoPanelLayout.width,
+            height: panelHeight > 0 ? panelHeight : nil,
+            alignment: .top
+        )
+        .clipped()
         .background(WindowAccessor { panel = $0 })
         .onChange(of: showingPicker) { _, isShowing in
-            guard !isShowing else { return }
-            applyPanelHeight(contentHeight)
+            updatePanelHeight(
+                isShowing ? EchoPanelLayout.pickerHeight : contentHeight,
+                animated: true
+            )
         }
         .onChange(of: contentHeight) { _, height in
             guard !showingPicker else { return }
-            applyPanelHeight(height)
+            updatePanelHeight(height, animated: panelHeight > 0)
         }
         .onAppear {
             store.refreshProcessObjects()
+            if let url = pendingFileURL {
+                pendingFileURL = nil
+                panelHeight = 0
+                addAudioFile(url)
+            }
         }
         .task {
             await router.prepareDevice()
@@ -62,8 +76,6 @@ struct SourceListView: View {
         .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
             contentHeight = height
         }
-        .frame(maxHeight: .infinity, alignment: .top)
-        .clipped()
     }
 
     private var hasContent: Bool {
@@ -264,11 +276,20 @@ struct SourceListView: View {
     }
 
     private func importAudioFile() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.audio]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let picker = NSOpenPanel()
+        picker.allowedContentTypes = [.audio]
+        picker.allowsMultipleSelection = false
+        picker.canChooseDirectories = false
+
+        NSApp.activate(ignoringOtherApps: true)
+        picker.begin { response in
+            guard response == .OK, let url = picker.url else { return }
+            pendingFileURL = url
+            reopenMenuBarExtra()
+        }
+    }
+
+    private func addAudioFile(_ url: URL) {
         withAnimation(.snappy(duration: 0.3)) {
             filePlayer.load(url: url)
         }
@@ -277,16 +298,68 @@ struct SourceListView: View {
         }
     }
 
+    private func reopenMenuBarExtra() {
+        if panel?.isVisible == true, let url = pendingFileURL {
+            pendingFileURL = nil
+            addAudioFile(url)
+            return
+        }
+        clickEchoStatusItem()
+    }
+
+    private func clickEchoStatusItem() {
+        for window in NSApp.windows where window.className.contains("NSStatusBar") {
+            if let button = echoStatusButton(in: window.contentView) {
+                button.performClick(nil)
+                return
+            }
+        }
+    }
+
+    private func echoStatusButton(in view: NSView?) -> NSStatusBarButton? {
+        guard let view else { return nil }
+        if let button = view as? NSStatusBarButton {
+            return button
+        }
+        for subview in view.subviews {
+            if let button = echoStatusButton(in: subview) {
+                return button
+            }
+        }
+        return nil
+    }
+
+    private func updatePanelHeight(_ height: CGFloat, animated: Bool) {
+        guard height > 0 else { return }
+        let shouldAnimate = animated && panelHeight > 0
+        if shouldAnimate {
+            withAnimation(.snappy(duration: EchoPanelLayout.resizeDuration)) {
+                panelHeight = height
+            }
+        } else {
+            panelHeight = height
+        }
+        applyPanelHeight(height, animated: shouldAnimate)
+    }
+
     /// A menu bar panel grows to fit its content but never shrinks back on its own,
     /// so the taller picker leaves the panel oversized once the list returns.
-    private func applyPanelHeight(_ height: CGFloat) {
+    private func applyPanelHeight(_ height: CGFloat, animated: Bool) {
         guard let panel, height > 0 else { return }
         let target = panel.frameRect(forContentRect: NSRect(x: 0, y: 0, width: panel.frame.width, height: height))
         guard abs(panel.frame.height - target.height) > 0.5 else { return }
         var frame = panel.frame
         frame.origin.y += frame.height - target.height
         frame.size.height = target.height
-        panel.setFrame(frame, display: true)
+        guard animated else {
+            panel.setFrame(frame, display: true)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = EchoPanelLayout.resizeDuration
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+            panel.animator().setFrame(frame, display: true)
+        }
     }
 }
 
@@ -751,7 +824,7 @@ struct AppPickerView: View {
                 }
             }
         }
-        .frame(width: EchoPanelLayout.width, height: 360)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             running = store.availableCandidates()
             var excluded = Set(store.sources.map(\.bundleID))
