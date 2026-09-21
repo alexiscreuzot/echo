@@ -1,24 +1,23 @@
 # Echo
 
-[![macOS](https://img.shields.io/badge/macOS-26%2B-black)](https://developer.apple.com/macos/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <img src="docs/screenshot.png" alt="Echo in the menu bar, mixing Safari and Music into the Echo microphone" width="380">
+</p>
 
-Minimal macOS loopback: send a specific app’s audio into the iOS Simulator.
+<p align="center">
+  Send sound from apps on your Mac into the iOS Simulator — as if it were the microphone.
+</p>
 
-Add one or more apps as sources from the menu bar extra, press Start, then set the Simulator’s microphone to **Echo**.
+<p align="center">
+  <a href="https://developer.apple.com/macos/"><img src="https://img.shields.io/badge/macOS-26%2B-black" alt="macOS 26+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
 
-![Echo](docs/screenshot.png)
-
-Requires macOS 26+.
-
-## Features
-
-- Tap one or more running apps (Core Audio process taps)
-- Mix those sources into a virtual **Echo** device (2-channel, 48 kHz)
-- First launch installs the bundled HAL driver (administrator password)
-- Source list persists; a source becomes Active again when that app is running
+Safari, Music, a call, a video — pick what to share, press play, and the Simulator hears it. Those apps keep playing on your Mac as usual.
 
 ## Install
+
+macOS 26 or later.
 
 ```bash
 brew tap alexiscreuzot/echo https://github.com/alexiscreuzot/echo
@@ -26,9 +25,10 @@ brew trust alexiscreuzot/echo
 brew install --cask echo
 ```
 
-The tap is this repo (`Casks/echo.rb`). Homebrew’s short `brew tap alexiscreuzot/echo` looks for a separate `homebrew-echo` repository — pass the URL so it uses this one.
+The first time you open Echo, macOS asks for an administrator password so it can add the Echo microphone.
 
-Already tapped the old repo:
+<details>
+<summary>Already using Echo from an older tap?</summary>
 
 ```bash
 brew tap --custom-remote alexiscreuzot/echo https://github.com/alexiscreuzot/echo
@@ -36,64 +36,38 @@ brew update
 brew upgrade --cask echo
 ```
 
-First launch asks for an administrator password to install the Echo audio device.
+</details>
 
-## Architecture
+## Use it
 
-- **Echo.driver** — Core Audio HAL plugin. Virtual 2-channel 48 kHz device. Audio written to its output is readable on its input.
-- **Echo.app** — Menu bar SwiftUI app. Taps the apps you add (process taps), mixes them, and plays the result into Echo.
+1. Click the waveform icon in the menu bar.
+2. Add an app, or an audio file.
+3. Press play. macOS may ask once per app for permission to capture its sound.
+4. In the Simulator, choose **I/O → Audio Input → Echo**.
+5. Play something in the source app. The Simulator hears it as the microphone.
 
-## Build
+Echo remembers your sources. When that app is open again, it shows as active.
 
-Open `Echo.xcodeproj` and build the **Echo** scheme. That also builds `Echo.driver` and copies it into `Echo.app/Contents/PlugIns/`.
-
-Select your development team on the Echo app target.
-
-On first launch, Echo copies the bundled driver to `/Library/Audio/Plug-Ins/HAL/` (administrator password) and restarts `coreaudiod`. Later launches skip that if the installed version is current.
-
-## Export
-
-`coreaudiod` only loads HAL plugins signed with a **Developer ID Application** certificate and the hardened runtime. An Apple Development certificate is not enough — a Debug build from Xcode will embed the driver, but Core Audio will not load it.
-
-1. Product → Archive.
-2. Distribute App → **Direct Distribution** (Developer ID) and notarize.
-3. The exported `Echo.app` includes `Echo.driver`. First launch on a machine without the driver prompts for an administrator password and installs it.
-
-To install a locally built driver without exporting:
+## Remove it
 
 ```bash
-CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-  ./scripts/install-driver.sh /path/to/Echo.driver
+brew uninstall --cask echo
+sudo rm -rf /Library/Audio/Plug-Ins/HAL/Echo.driver
+sudo killall coreaudiod
 ```
 
-Or, if the driver is already signed in Xcode:
+The last two lines remove the Echo microphone. After that, it no longer appears in the Simulator or Audio MIDI Setup.
+
+## Developers
+
+Build the **Echo** scheme in `Echo.xcodeproj`. First launch installs the bundled audio driver.
+
+A Debug build from Xcode will not show up as a microphone — Core Audio only loads a driver signed with a Developer ID certificate. Archive, then **Direct Distribution**, and notarize. Details are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
 ./scripts/install-driver.sh /path/to/Echo.driver
 ```
 
-Confirm **Echo** appears in Audio MIDI Setup.
-
-## Use with the Simulator
-
-1. Open Echo from the menu bar and add the host apps you want to tap.
-2. Press Start. macOS may ask for System Audio Recording access once per app.
-3. In the iOS Simulator: **I/O → Audio Input → Echo**.
-4. Play audio in the source app. The Simulator sees it as microphone input.
-
-Source apps keep playing normally. The list persists across launches; a source becomes Active again when that app is running and registered with Core Audio.
-
-## Uninstall the driver
-
-```bash
-sudo rm -rf /Library/Audio/Plug-Ins/HAL/Echo.driver
-sudo killall coreaudiod
-```
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
-
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). By contributing you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
