@@ -8,11 +8,26 @@ final class AudioRouter {
     private(set) var levels: [String: Float] = [:]
 
     private let capture = AudioCapture()
+    private let ignoresAudio: Bool
     private var routeDescription = ""
     private var lastSources: [AudioSource] = []
 
     init(filePlayer: FilePlayer) {
         self.filePlayer = filePlayer
+        ignoresAudio = false
+    }
+
+    /// Mock running state for README screenshots. Does not start Core Audio taps.
+    static func preview(filePlayer: FilePlayer) -> AudioRouter {
+        AudioRouter(previewFilePlayer: filePlayer)
+    }
+
+    private init(previewFilePlayer: FilePlayer) {
+        filePlayer = previewFilePlayer
+        ignoresAudio = true
+        isRunning = true
+        status = "Safari, Music → Echo"
+        levels = ["com.apple.Safari": 0.62]
     }
 
     func checkDevice() {
@@ -22,6 +37,7 @@ final class AudioRouter {
     }
 
     func prepareDevice() async {
+        guard !isRunning else { return }
         guard DriverInstaller.needsInstall() else {
             checkDevice()
             return
@@ -36,6 +52,7 @@ final class AudioRouter {
     }
 
     func start(sources: [AudioSource]) {
+        guard !ignoresAudio else { return }
         do {
             try startRouting(sources: sources)
             filePlayer.play()
@@ -46,6 +63,7 @@ final class AudioRouter {
     }
 
     func stop() {
+        guard !ignoresAudio else { return }
         filePlayer.pause()
         capture.stop()
         levels = [:]
@@ -54,7 +72,7 @@ final class AudioRouter {
     }
 
     func sync(sources: [AudioSource]) {
-        guard isRunning else { return }
+        guard isRunning, !ignoresAudio else { return }
         do {
             try startRouting(sources: sources)
         } catch {

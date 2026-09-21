@@ -7,7 +7,6 @@ enum EchoPanelLayout {
     static let resizeDuration: TimeInterval = 0.25
 }
 
-@main
 struct EchoApp: App {
     @State private var store = SourceStore()
     @State private var filePlayer: FilePlayer

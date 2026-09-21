@@ -18,6 +18,8 @@
 		8A1E30000000000000000008 /* ProcessEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E10000000000000000008 /* ProcessEnumerator.swift */; };
 		8A1E30000000000000000011 /* EchoDriver.c in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E20000000000000000001 /* EchoDriver.c */; };
 		8A1E30000000000000000009 /* DriverInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E1000000000000000000C /* DriverInstaller.swift */; };
+		8A1E3000000000000000000B /* ScreenshotRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E1000000000000000000F /* ScreenshotRenderer.swift */; };
+		8A1E3000000000000000000C /* EchoMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1E10000000000000000010 /* EchoMain.swift */; };
 		8A1E30000000000000000012 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8A1E1000000000000000000B /* Assets.xcassets */; };
 		8A1E30000000000000000013 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8A1E1000000000000000000D /* AppIcon.icon */; };
 		8A1E30000000000000000030 /* Echo.driver in Embed HAL Driver */ = {isa = PBXBuildFile; fileRef = 8A1E00000000000000000021 /* Echo.driver */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
@@ -53,6 +55,8 @@
 		8A1E1000000000000000000B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8A1E1000000000000000000D /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		8A1E1000000000000000000C /* DriverInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriverInstaller.swift; sourceTree = "<group>"; };
+		8A1E1000000000000000000F /* ScreenshotRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotRenderer.swift; sourceTree = "<group>"; };
+		8A1E10000000000000000010 /* EchoMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoMain.swift; sourceTree = "<group>"; };
 		8A1E20000000000000000001 /* EchoDriver.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = EchoDriver.c; sourceTree = "<group>"; };
 		8A1E20000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8A1E40000000000000000001 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
@@ -103,6 +107,7 @@
 			isa = PBXGroup;
 			children = (
 				8A1E10000000000000000001 /* EchoApp.swift */,
+				8A1E10000000000000000010 /* EchoMain.swift */,
 				8A1E10000000000000000006 /* SourceListView.swift */,
 				8A1E10000000000000000002 /* AudioSource.swift */,
 				8A1E10000000000000000003 /* SourceStore.swift */,
@@ -112,6 +117,7 @@
 				8A1E10000000000000000005 /* AudioRouter.swift */,
 				8A1E10000000000000000007 /* EchoDevice.swift */,
 				8A1E1000000000000000000C /* DriverInstaller.swift */,
+				8A1E1000000000000000000F /* ScreenshotRenderer.swift */,
 				8A1E1000000000000000000B /* Assets.xcassets */,
 				8A1E1000000000000000000D /* AppIcon.icon */,
 				8A1E1000000000000000000A /* Echo.entitlements */,
@@ -245,6 +251,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8A1E30000000000000000001 /* EchoApp.swift in Sources */,
+				8A1E3000000000000000000C /* EchoMain.swift in Sources */,
 				8A1E30000000000000000002 /* AudioSource.swift in Sources */,
 				8A1E30000000000000000003 /* SourceStore.swift in Sources */,
 				8A1E30000000000000000004 /* AudioCapture.swift in Sources */,
@@ -254,6 +261,7 @@
 				8A1E30000000000000000007 /* EchoDevice.swift in Sources */,
 				8A1E30000000000000000008 /* ProcessEnumerator.swift in Sources */,
 				8A1E30000000000000000009 /* DriverInstaller.swift in Sources */,
+				8A1E3000000000000000000B /* ScreenshotRenderer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

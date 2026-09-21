@@ -7,9 +7,7 @@ Minimal macOS loopback: send a specific app’s audio into the iOS Simulator.
 
 Add one or more apps as sources from the menu bar extra, press Start, then set the Simulator’s microphone to **Echo**.
 
-<!-- Drop a window capture at docs/screenshot.png to show it here.
 ![Echo](docs/screenshot.png)
--->
 
 Requires macOS 26+.
 

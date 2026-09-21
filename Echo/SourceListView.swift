@@ -30,7 +30,11 @@ struct SourceListView: View {
             alignment: .top
         )
         .clipped()
-        .background(WindowAccessor { panel = $0 })
+        .background(WindowAccessor { window in
+            if panel !== window {
+                panel = window
+            }
+        })
         .onChange(of: showingPicker) { _, isShowing in
             updatePanelHeight(
                 isShowing ? EchoPanelLayout.pickerHeight : contentHeight,
@@ -97,30 +101,26 @@ struct SourceListView: View {
                 emptyHero
             } else {
                 VStack(spacing: 8) {
-                    GlassEffectContainer(spacing: 8) {
-                        VStack(spacing: 8) {
-                            if filePlayer.fileName != nil {
-                                PlayerCard(player: filePlayer, isRunning: router.isRunning) {
-                                    withAnimation(.snappy(duration: 0.25)) {
-                                        filePlayer.clear()
-                                        router.refreshFileStatus()
-                                    }
-                                }
-                                .transition(.asymmetric(insertion: .opacity, removal: .identity))
-                            }
-                            ForEach(store.sources) { source in
-                                SourceRow(source: source) {
-                                    store.toggle(source)
-                                } onMute: {
-                                    store.toggleMute(source)
-                                } onRemove: {
-                                    withAnimation(.snappy(duration: 0.25)) {
-                                        store.remove(id: source.bundleID)
-                                    }
-                                }
-                                .transition(.asymmetric(insertion: .opacity, removal: .identity))
+                    if filePlayer.fileName != nil {
+                        PlayerCard(player: filePlayer, isRunning: router.isRunning) {
+                            withAnimation(.snappy(duration: 0.25)) {
+                                filePlayer.clear()
+                                router.refreshFileStatus()
                             }
                         }
+                        .transition(.asymmetric(insertion: .opacity, removal: .identity))
+                    }
+                    ForEach(store.sources) { source in
+                        SourceRow(source: source) {
+                            store.toggle(source)
+                        } onMute: {
+                            store.toggleMute(source)
+                        } onRemove: {
+                            withAnimation(.snappy(duration: 0.25)) {
+                                store.remove(id: source.bundleID)
+                            }
+                        }
+                        .transition(.asymmetric(insertion: .opacity, removal: .identity))
                     }
                 }
                 .padding(.horizontal, 12)
@@ -145,9 +145,10 @@ struct SourceListView: View {
                     .frame(width: 28, height: 52)
                 Label("Echo", systemImage: "waveform")
                     .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 12, style: .continuous))
+                    .echoCard(cornerRadius: 12)
             }
             .shadow(color: .black.opacity(0.28), radius: 8, y: 1)
 
@@ -166,13 +167,14 @@ struct SourceListView: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(.callout.weight(.medium))
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .frame(width: 88)
                 .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12, style: .continuous))
+        .echoCard(cornerRadius: 12, interactive: true)
         .help(title == "App" ? "Add an app" : "Add an audio file")
     }
 
@@ -181,7 +183,7 @@ struct SourceListView: View {
             HStack(spacing: 6) {
                 Image(systemName: "circle.fill")
                     .font(.system(size: 7))
-                    .foregroundStyle(router.isRunning ? .green : .secondary.opacity(0.45))
+                    .foregroundStyle(router.isRunning ? Color.green : Color.primary.opacity(0.35))
                     .symbolEffect(.pulse, options: .repeating, isActive: router.isRunning)
                 Text(router.status)
                     .font(.caption)
@@ -207,8 +209,9 @@ struct SourceListView: View {
                 }
             } label: {
                 Image(systemName: confirmingQuit ? "checkmark" : "power")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(confirmingQuit ? .red : .secondary)
+                    .font(.caption.weight(.semibold))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(confirmingQuit ? Color.red : Color.primary)
                     .frame(width: 16, height: 16)
                     .contentShape(Rectangle())
                     .contentTransition(.symbolEffect(.replace))
@@ -227,18 +230,16 @@ struct SourceListView: View {
                 importAudioFile()
             } label: {
                 Image(systemName: "waveform")
-                    .frame(width: 18, height: 18)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(EchoGlyphButtonStyle())
             .help(filePlayer.fileName == nil ? "Add an audio file" : "Replace audio file")
 
             Button {
                 showingPicker = true
             } label: {
                 Image(systemName: "plus")
-                    .frame(width: 18, height: 18)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(EchoGlyphButtonStyle())
             .help("Add an app")
 
             Spacer(minLength: 8)
@@ -252,26 +253,21 @@ struct SourceListView: View {
                 }
             } label: {
                 Image(systemName: router.isRunning ? "stop.fill" : "play.fill")
-                    .frame(width: 18, height: 18)
                     .offset(x: router.isRunning ? 0 : 0.5)
                     .contentTransition(.symbolEffect(.replace))
             }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.circle)
-            .tint(router.isRunning ? .red : .accentColor)
+            .buttonStyle(EchoPlayButtonStyle(isRunning: router.isRunning))
             .keyboardShortcut(.space, modifiers: [])
             .disabled(!router.isRunning && !canStart)
             .help(router.isRunning ? "Stop" : "Start")
             .accessibilityLabel(router.isRunning ? "Stop" : "Start")
         }
-        .controlSize(.small)
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 10)
-        .background(Color.secondary.opacity(0.08))
+        .background(Color.primary.opacity(0.08))
         .overlay(alignment: .top) {
             Divider()
-                .opacity(0.5)
         }
     }
 
@@ -346,6 +342,7 @@ struct SourceListView: View {
     /// so the taller picker leaves the panel oversized once the list returns.
     private func applyPanelHeight(_ height: CGFloat, animated: Bool) {
         guard let panel, height > 0 else { return }
+        guard panel.identifier?.rawValue != "echo.screenshot" else { return }
         let target = panel.frameRect(forContentRect: NSRect(x: 0, y: 0, width: panel.frame.width, height: height))
         guard abs(panel.frame.height - target.height) > 0.5 else { return }
         var frame = panel.frame
@@ -373,7 +370,7 @@ private struct WindowAccessor: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        if nsView.window != nil {
+        DispatchQueue.main.async {
             onWindow(nsView.window)
         }
     }
@@ -383,7 +380,7 @@ private struct MergeArrow: View {
     var body: some View {
         MergeArrowShape()
             .stroke(style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
     }
 }
 
@@ -429,10 +426,11 @@ private struct PlayerCard: View {
         HStack(spacing: 12) {
             Image(systemName: "waveform")
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.primary)
                 .frame(width: 28, height: 28)
                 .background(
-                    Color.secondary.opacity(0.12),
+                    Color.primary.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 7, style: .continuous)
                 )
 
@@ -477,7 +475,8 @@ private struct PlayerCard: View {
             } label: {
                 Image(systemName: player.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .font(.body)
-                    .foregroundStyle(player.muted ? Color.blue : Color.secondary.opacity(0.7))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(player.muted ? Color.blue : Color.primary)
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
                     .contentTransition(.symbolEffect(.replace))
@@ -488,7 +487,7 @@ private struct PlayerCard: View {
             Button(action: onRemove) {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.primary)
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
             }
@@ -497,7 +496,7 @@ private struct PlayerCard: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
+        .echoCard()
         .contextMenu {
             Button(player.muted ? "Play through speakers" : "Mute speakers") {
                 player.toggleMute()
@@ -531,7 +530,7 @@ private struct LoadingSeekBar: View {
             let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
 
             RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(Color.secondary.opacity(0.15))
+                .fill(Color.primary.opacity(0.12))
                 .frame(height: 4)
                 .overlay {
                     GeometryReader { geo in
@@ -597,7 +596,7 @@ final class SeekBarNSView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let trackRect = NSRect(x: 0, y: bounds.midY - 2, width: bounds.width, height: 4)
-        NSColor.secondaryLabelColor.withAlphaComponent(0.15).setFill()
+        NSColor.labelColor.withAlphaComponent(0.12).setFill()
         NSBezierPath(roundedRect: trackRect, xRadius: 2, yRadius: 2).fill()
 
         let clamped = min(max(progress, 0), 1)
@@ -647,7 +646,7 @@ private struct SourceRow: View {
                 ZStack {
                     Circle()
                         .strokeBorder(
-                            source.enabled ? Color.accentColor : Color.secondary.opacity(0.35),
+                            source.enabled ? Color.accentColor : Color.secondary,
                             lineWidth: 1.6
                         )
                     if source.enabled {
@@ -676,7 +675,7 @@ private struct SourceRow: View {
                 if !source.isActive {
                     Text("Offline")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -685,7 +684,8 @@ private struct SourceRow: View {
             Button(action: onMute) {
                 Image(systemName: source.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .font(.body)
-                    .foregroundStyle(source.muted ? Color.blue : Color.secondary.opacity(0.7))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(source.muted ? Color.blue : Color.primary)
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
                     .contentTransition(.symbolEffect(.replace))
@@ -696,7 +696,7 @@ private struct SourceRow: View {
             Button(action: onRemove) {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.primary)
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
             }
@@ -705,8 +705,8 @@ private struct SourceRow: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
-        .opacity(source.enabled ? 1 : 0.48)
+        .echoCard()
+        .opacity(source.enabled ? 1 : 0.6)
         .contextMenu {
             Button(source.enabled ? "Deactivate" : "Activate", action: onToggle)
             Button(source.muted ? "Play through speakers" : "Mute speakers", action: onMute)
@@ -721,7 +721,7 @@ private struct OutputMeter: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Color.secondary.opacity(0.12)
+                Color.primary.opacity(0.12)
                 Rectangle()
                     .fill(meterGradient)
                     .frame(width: max(0, geometry.size.width * CGFloat(clampedLevel)))
@@ -761,9 +761,8 @@ struct AppPickerView: View {
             HStack(spacing: 8) {
                 Button(action: onClose) {
                     Image(systemName: "chevron.left")
-                        .frame(width: 16, height: 16)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(EchoGlyphButtonStyle())
                 .keyboardShortcut(.cancelAction)
                 .help("Back")
 
@@ -786,7 +785,7 @@ struct AppPickerView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .glassEffect(.regular, in: .rect(cornerRadius: 8, style: .continuous))
+            .echoCard(cornerRadius: 8)
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
 
@@ -801,20 +800,18 @@ struct AppPickerView: View {
                     ContentUnavailableView.search(text: query)
                 } else {
                     ScrollView {
-                        GlassEffectContainer(spacing: 8) {
-                            LazyVStack(alignment: .leading, spacing: 8) {
-                                if !filteredRunning.isEmpty {
-                                    sectionHeader("Running")
-                                    ForEach(filteredRunning) { candidate in
-                                        candidateRow(candidate)
-                                    }
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            if !filteredRunning.isEmpty {
+                                sectionHeader("Running")
+                                ForEach(filteredRunning) { candidate in
+                                    candidateRow(candidate)
                                 }
-                                if !filteredInstalled.isEmpty {
-                                    sectionHeader("Installed")
-                                        .padding(.top, filteredRunning.isEmpty ? 0 : 8)
-                                    ForEach(filteredInstalled) { candidate in
-                                        candidateRow(candidate)
-                                    }
+                            }
+                            if !filteredInstalled.isEmpty {
+                                sectionHeader("Installed")
+                                    .padding(.top, filteredRunning.isEmpty ? 0 : 8)
+                                ForEach(filteredInstalled) { candidate in
+                                    candidateRow(candidate)
                                 }
                             }
                         }
@@ -885,7 +882,7 @@ struct AppPickerView: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(.secondary.opacity(0.12), in: Capsule())
+                        .background(Color.primary.opacity(0.08), in: Capsule())
                 }
             }
             .padding(.horizontal, 10)
@@ -893,6 +890,72 @@ struct AppPickerView: View {
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+        .echoCard(cornerRadius: 12, interactive: true)
+    }
+}
+
+private struct EchoCard: ViewModifier {
+    var cornerRadius: CGFloat
+    var interactive: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.background(
+            Color.black.opacity(fillOpacity),
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        )
+    }
+
+    private var fillOpacity: CGFloat {
+        if colorScheme == .dark {
+            interactive ? 0.28 : 0.22
+        } else {
+            interactive ? 0.08 : 0.06
+        }
+    }
+}
+
+private struct EchoGlyphButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(.primary)
+            .frame(width: 28, height: 28)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(glyphFillOpacity(pressed: configuration.isPressed)))
+            }
+    }
+
+    private func glyphFillOpacity(pressed: Bool) -> CGFloat {
+        if colorScheme == .dark {
+            pressed ? 0.24 : 0.16
+        } else {
+            pressed ? 0.16 : 0.10
+        }
+    }
+}
+
+private struct EchoPlayButtonStyle: ButtonStyle {
+    var isRunning: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(.white)
+            .frame(width: 28, height: 28)
+            .background {
+                Circle()
+                    .fill(isRunning ? Color.red : Color.accentColor)
+                    .opacity(configuration.isPressed ? 0.82 : 1)
+            }
+    }
+}
+
+private extension View {
+    func echoCard(cornerRadius: CGFloat = 14, interactive: Bool = false) -> some View {
+        modifier(EchoCard(cornerRadius: cornerRadius, interactive: interactive))
     }
 }

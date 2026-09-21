@@ -10,12 +10,39 @@ final class SourceStore {
 
     private var processListListener: AudioObjectPropertyListenerBlock?
     private var workspaceObservers: [NSObjectProtocol] = []
+    private let tracksProcesses: Bool
 
     init() {
+        tracksProcesses = true
         load()
         refreshProcessObjects()
         observeWorkspace()
         observeProcessList()
+    }
+
+    /// Mock store for README screenshots. Does not persist or observe Core Audio.
+    static func preview() -> SourceStore {
+        SourceStore(previewSources: [
+            AudioSource(
+                bundleID: "com.apple.Safari",
+                displayName: "Safari",
+                enabled: true,
+                muted: true,
+                processObjectIDs: [1]
+            ),
+            AudioSource(
+                bundleID: "com.apple.Music",
+                displayName: "Music",
+                enabled: true,
+                muted: true,
+                processObjectIDs: [1]
+            )
+        ])
+    }
+
+    private init(previewSources: [AudioSource]) {
+        tracksProcesses = false
+        sources = previewSources
     }
 
     deinit {
@@ -57,6 +84,7 @@ final class SourceStore {
     }
 
     func refreshProcessObjects() {
+        guard tracksProcesses else { return }
         for index in sources.indices {
             sources[index].processObjectIDs = ProcessEnumerator.processObjectIDs(for: sources[index].bundleID)
         }
@@ -67,6 +95,7 @@ final class SourceStore {
     }
 
     private func persist() {
+        guard tracksProcesses else { return }
         let payload = sources.map {
             PersistedSource(
                 bundleID: $0.bundleID,

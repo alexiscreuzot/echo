@@ -30,10 +30,12 @@ final class FilePlayer {
     private var loadGeneration = 0
     private var monitorEngine: AVAudioEngine?
 
-    init() {
+    init(restoreSavedFile: Bool = true) {
         muted = UserDefaults.standard.object(forKey: Self.mutedKey) as? Bool ?? true
         mutedLocked = muted
-        restore()
+        if restoreSavedFile {
+            restore()
+        }
     }
 
     var hasFile: Bool { fileName != nil }
