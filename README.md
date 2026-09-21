@@ -5,7 +5,8 @@
 </p>
 
 <p align="center">
-  Send sound from apps on your Mac into the iOS Simulator — as if it were the microphone.
+  <strong>A virtual microphone for your Mac.</strong><br>
+  Send audio from any app into any app that takes a mic.
 </p>
 
 <p align="center">
@@ -13,7 +14,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
 </p>
 
-Safari, Music, a call, a video — pick what to share, press play, and the Simulator hears it. Those apps keep playing on your Mac as usual.
+Echo adds a microphone to your Mac that plays sound from the apps you choose. Pick Safari, Music, or an audio file in the menu bar, press play, and anything that listens to a microphone can hear it — the iOS Simulator, a call, a recording, a browser tab.
+
+Your apps keep playing normally. Echo just gives them somewhere new to be heard.
 
 ## Install
 
@@ -43,10 +46,14 @@ brew upgrade --cask echo
 1. Click the waveform icon in the menu bar.
 2. Add an app, or an audio file.
 3. Press play. macOS may ask once per app for permission to capture its sound.
-4. In the Simulator, choose **I/O → Audio Input → Echo**.
-5. Play something in the source app. The Simulator hears it as the microphone.
+4. In the app that should listen, choose **Echo** as the microphone. In the iOS Simulator that’s **I/O → Audio Input → Echo**.
 
 Echo remembers your sources. When that app is open again, it shows as active.
+
+## How it works
+
+- **Echo.driver** — a Core Audio HAL plugin that creates the Echo microphone. It’s a 2-channel, 48 kHz device: audio written to its output is readable on its input.
+- **Echo.app** — the menu bar app. It taps the apps you add (Core Audio process taps), mixes them, and plays the result into Echo.
 
 ## Remove it
 

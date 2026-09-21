@@ -4,7 +4,7 @@ cask "echo" do
 
   url "https://github.com/alexiscreuzot/echo/releases/download/v#{version}/Echo.zip"
   name "Echo"
-  desc "Send a specific app's audio into the iOS Simulator"
+  desc "A virtual microphone that plays audio from apps you choose"
   homepage "https://github.com/alexiscreuzot/echo"
 
   livecheck do
