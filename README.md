@@ -1,11 +1,7 @@
 # Echo
 
 <p align="center">
-  <img src="docs/hero.png" alt="Echo. A virtual microphone for your Mac. Any app, into any microphone. Free and open source, MIT license." width="720">
-</p>
-
-<p align="center">
-  <img src="docs/screenshot.png" alt="Echo in the menu bar, mixing Safari and Music into the Echo microphone" width="380">
+  <img src="docs/hero.png" alt="Echo lives in the menu bar. The panel is mixing Safari and Music into the Echo microphone. A virtual microphone for your Mac. Free and open source." width="840">
 </p>
 
 <p align="center">
